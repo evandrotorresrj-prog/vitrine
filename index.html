@@ -9,6 +9,18 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap">
 <style>
 .loading-shell[hidden]{display:none;}
+html,body{overflow-x:hidden;}
+.steps{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+@media (max-width: 560px){
+body main.content{padding:18px 16px 50px;}
+body .topbar{padding:14px 16px; flex-wrap:wrap; gap:10px;}
+body .wizard-card{padding:16px;}
+body .steps{margin-bottom:18px;}
+body .stat-row, body .kanban, body .tpl-grid, body .dest-grid, body .plan-grid, body .form-grid, body .pick-grid, body .topic-grid{grid-template-columns:1fr;}
+body .slide-row{grid-template-columns:1fr;}
+body .slide-row .tagcol{flex-direction:row; align-items:center; gap:8px; margin-bottom:8px;}
+body .auth-card{padding:22px;}
+}
   :root{
     --bg:#080A10; --surface:#10131C; --surface-2:#171B26; --border:#242A38;
     --ink:#EEF0F6; --ink-muted:#8B93A8; --ink-faint:#545D72;

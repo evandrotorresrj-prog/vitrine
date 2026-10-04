@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
         const inv = event.data.object as Stripe.Invoice;
         if (inv.subscription) {
           const sub = await stripe.subscriptions.retrieve(inv.subscription as string);
-          await ativar(db, sub);   // renovação: atualiza periodo_fim
+          await ativar(db, sub);   // renovação: atualiza data_fim
         }
         break;
       }
@@ -72,7 +72,7 @@ async function ativar(db: any, sub: Stripe.Subscription, sessionId?: string) {
     status: "ativa",
     stripe_customer_id: sub.customer as string,
     stripe_subscription_id: sub.id,
-    periodo_fim: new Date(sub.current_period_end * 1000).toISOString(),
+    data_fim: new Date(sub.current_period_end * 1000).toISOString(),
   };
   if (sessionId) campos.stripe_checkout_session_id = sessionId;
 

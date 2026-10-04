@@ -194,7 +194,7 @@
       body: JSON.stringify(payload)
     });
     var data = await res.json().catch(function () { return {}; });
-    if (!res.ok) throw new Error(data.error || "Erro ao gerar conteúdo.");
+    if (!res.ok) throw new Error(data.error || "Erro ao chamar o servidor.");
     return data;
   }
 
@@ -262,6 +262,152 @@
   }
   function slideStrip(slides, tplSlug, mini, art) {
     return (slides || []).map(function (s, i) { return slideTile(s, tplSlug, mini, i + 1, slides.length, i === 0 ? art : null); }).join("");
+  }
+
+
+  /* ============================================================
+     RENDER DOS SLIDES EM JPEG (1080×1350, 4:5) — o Instagram só aceita imagem
+  ============================================================ */
+  var SLIDE_W = 1080, SLIDE_H = 1350;
+  var SLIDE_THEMES = {
+    minimalista: { bg: ["#10131C", "#10131C"], ink: "#EEF0F6", tag: "#3D7FFF", border: "#242A38" },
+    vibrante: { bg: ["#3D7FFF", "#1E4FCC"], ink: "#FFFFFF", tag: "rgba(255,255,255,0.85)", border: "#3D7FFF" },
+    editorial: { bg: ["#080A10", "#0F1B33"], ink: "#EEF0F6", tag: "#22D3EE", border: "#22D3EE" }
+  };
+
+  function loadImage(url) {
+    return new Promise(function (resolve) {
+      if (!url) return resolve(null);
+      var img = new Image();
+      img.crossOrigin = "anonymous";            // sem isso o canvas fica "contaminado" e não exporta
+      var t = setTimeout(function () { resolve(null); }, 20000);
+      img.onload = function () { clearTimeout(t); resolve(img); };
+      img.onerror = function () { clearTimeout(t); resolve(null); };
+      img.src = url;
+    });
+  }
+
+  function wrapLines(ctx, text, maxW) {
+    var out = [];
+    String(text || "").split(/\n/).forEach(function (para) {
+      var words = para.split(/\s+/).filter(Boolean), line = "";
+      if (!words.length) { out.push(""); return; }
+      words.forEach(function (w) {
+        var test = line ? line + " " + w : w;
+        if (ctx.measureText(test).width > maxW && line) { out.push(line); line = w; } else line = test;
+      });
+      out.push(line);
+    });
+    return out;
+  }
+
+  // escreve o texto reduzindo a fonte até caber na altura disponível
+  function fitText(ctx, text, opts) {
+    var size = opts.size, lines;
+    for (; size >= opts.min; size -= 2) {
+      ctx.font = opts.weight + " " + size + "px " + opts.family;
+      lines = wrapLines(ctx, text, opts.maxW);
+      if (lines.length * size * opts.lh <= opts.maxH) break;
+    }
+    return { size: size, lines: lines, height: lines.length * size * opts.lh };
+  }
+
+  async function renderSlideJpeg(slide, i, total, tplSlug, coverImg) {
+    var th = SLIDE_THEMES[tplSlug] || SLIDE_THEMES.minimalista;
+    var cv = document.createElement("canvas"); cv.width = SLIDE_W; cv.height = SLIDE_H;
+    var ctx = cv.getContext("2d");
+    var g = ctx.createLinearGradient(0, 0, SLIDE_W * 0.6, SLIDE_H);
+    g.addColorStop(0, th.bg[0]); g.addColorStop(1, th.bg[1]);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, SLIDE_W, SLIDE_H);
+
+    var pad = 96, top = pad;
+    if (i === 0 && coverImg) {
+      // capa: foto no topo (38% da altura), recortada tipo object-fit:cover
+      var ah = Math.round(SLIDE_H * 0.38), r = Math.max(SLIDE_W / coverImg.width, ah / coverImg.height);
+      var sw = SLIDE_W / r, sh = ah / r;
+      ctx.drawImage(coverImg, (coverImg.width - sw) / 2, (coverImg.height - sh) / 2, sw, sh, 0, 0, SLIDE_W, ah);
+      top = ah + 64;
+    }
+
+    var family = '"Plus Jakarta Sans", sans-serif', display = '"Bricolage Grotesque", "Plus Jakarta Sans", sans-serif';
+    ctx.textBaseline = "top";
+    if (slide.tag) {
+      ctx.fillStyle = th.tag; ctx.font = "700 34px " + family;
+      ctx.fillText(String(slide.tag).toUpperCase(), pad, top);
+      top += 64;
+    }
+    var bottomLimit = SLIDE_H - pad - 60;          // reserva espaço do contador
+    var avail = bottomLimit - top;
+    var title = fitText(ctx, slide.titulo, { size: i === 0 ? 96 : 80, min: 44, weight: 800, family: display, maxW: SLIDE_W - pad * 2, maxH: avail * 0.55, lh: 1.08 });
+    ctx.fillStyle = th.ink; ctx.font = "800 " + title.size + "px " + display;
+    title.lines.forEach(function (l, k) { ctx.fillText(l, pad, top + k * title.size * 1.08); });
+
+    var bodyMaxH = avail - title.height - 48;
+    var body = fitText(ctx, slide.corpo, { size: 44, min: 26, weight: 500, family: family, maxW: SLIDE_W - pad * 2, maxH: bodyMaxH, lh: 1.38 });
+    ctx.globalAlpha = 0.92; ctx.font = "500 " + body.size + "px " + family;
+    var by = bottomLimit - body.height;           // corpo alinhado embaixo, como no preview
+    body.lines.forEach(function (l, k) { ctx.fillText(l, pad, by + k * body.size * 1.38); });
+    ctx.globalAlpha = 0.7; ctx.font = "500 30px \"JetBrains Mono\", monospace"; ctx.textAlign = "right";
+    ctx.fillText((i + 1) + "/" + total, SLIDE_W - pad, SLIDE_H - pad - 30);
+    ctx.globalAlpha = 1; ctx.textAlign = "left";
+
+    return new Promise(function (resolve, reject) {
+      try { cv.toBlob(function (b) { b ? resolve(b) : reject(new Error("Falha ao gerar imagem.")); }, "image/jpeg", 0.9); }
+      catch (e) { reject(e); }
+    });
+  }
+
+  async function uploadSlide(blob, path) {
+    await Auth.ensureValidToken();
+    var s = Auth.get();
+    var res = await fetch(SUPABASE_URL + "/storage/v1/object/slides-render/" + path, {
+      method: "POST",
+      headers: { apikey: SUPABASE_KEY, Authorization: "Bearer " + s.access_token, "Content-Type": "image/jpeg" },
+      body: blob
+    });
+    if (!res.ok) throw new Error("Upload da imagem falhou: " + (await res.text().catch(function () { return res.status; })));
+    return SUPABASE_URL + "/storage/v1/object/public/slides-render/" + path;
+  }
+
+  // gera os JPEGs de todos os slides, sobe no Storage e grava render_url em cada slide
+  async function renderCarouselImages(c, onProgress) {
+    var tpl = findTemplateById(c.template_id);
+    var slug = (tpl && tpl.slug) || "minimalista";
+    try { await Promise.all([document.fonts.load('800 80px "Bricolage Grotesque"'), document.fonts.load('500 44px "Plus Jakarta Sans"'), document.fonts.load('700 34px "Plus Jakarta Sans"')]); } catch (e) { }
+    var capa = c.slides[0] && c.slides[0].imagem_url;
+    var coverImg = capa ? await loadImage(capa) : null;
+    var stamp = Date.now();
+    for (var i = 0; i < c.slides.length; i++) {
+      var sl = c.slides[i];
+      if (onProgress) onProgress(i + 1, c.slides.length);
+      var blob = await renderSlideJpeg(sl, i, c.slides.length, slug, coverImg);
+      var url = await uploadSlide(blob, state.profile.id + "/" + c.id + "/" + stamp + "-" + (i + 1) + ".jpg");
+      await DB.update("slides", "id=eq." + sl.id, { render_url: url });
+      sl.render_url = url;
+    }
+  }
+
+  async function publishToInstagram(c, btn) {
+    if (!(state.igConta && state.igConta.status === "ativo")) { toast("Conecte o Instagram primeiro (aba Instagram)."); return false; }
+    if (!c.slides || c.slides.length < 2) { toast("O Instagram exige pelo menos 2 slides."); return false; }
+    if (c.slides.length > 10) { toast("O Instagram aceita no máximo 10 slides."); return false; }
+    var orig = btn ? btn.innerHTML : "";
+    function label(t) { if (btn) btn.innerHTML = '<div class="spin"></div> ' + t; }
+    if (btn) btn.disabled = true;
+    try {
+      await renderCarouselImages(c, function (n, t) { label("Gerando imagem " + n + "/" + t + "…"); });
+      label("Enviando ao Instagram…");
+      var legenda = c.legenda || c.slides.map(function (s) { return s.titulo; }).join(" · ");
+      var resp = await callFunction("instagram-publicar", { carrossel_id: c.id, legenda: legenda });
+      c.status = "publicado"; c.data_publicada = resp.data_publicada; c.instagram_permalink = resp.permalink;
+      toast("Publicado no Instagram!");
+      return true;
+    } catch (err) {
+      toast("Erro ao publicar: " + err.message);
+      return false;
+    } finally {
+      if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+    }
   }
 
   /* ============================================================
@@ -445,7 +591,12 @@
     var meta = getSubjectMeta(c);
     var tpl = findTemplateById(c.template_id);
     var pillCls = c.status === "publicado" ? "pill-publicado" : c.status === "agendado" ? "pill-agendado" : "pill-draft";
-    var extra = c.status === "agendado" ? '<button class="btn btn-2 btn-sm" id="mark-published">' + ICONS.check + ' Marcar como publicado</button>' : "";
+    var igOk = state.igConta && state.igConta.status === "ativo";
+    var extra = c.status === "publicado"
+      ? (c.instagram_permalink ? '<a class="btn btn-ghost btn-sm" href="' + escapeHtml(c.instagram_permalink) + '" target="_blank" rel="noopener">' + ICONS.ig + ' Ver no Instagram</a>' : "")
+      : '<div style="display:flex;gap:8px;">' +
+        (c.status === "agendado" ? '<button class="btn btn-ghost btn-sm" id="mark-published">' + ICONS.check + ' Marcar como publicado</button>' : "") +
+        '<button class="btn btn-primary btn-sm" id="publish-ig"' + (igOk ? "" : ' title="Conecte o Instagram na aba Instagram"') + '>' + ICONS.ig + ' Publicar no Instagram</button></div>';
     document.getElementById("modal-body").innerHTML =
       '<div class="modal-head"><div><h3 style="font-size:19px;">' + escapeHtml(meta.titulo) + '</h3>' +
       '<span class="pill ' + pillCls + '" style="margin-top:6px;">' + c.status + '</span></div>' +
@@ -456,6 +607,10 @@
       '<span style="font-size:12px;color:var(--ink-faint);">' + escapeHtml(meta.sub) + '</span>' + extra + '</div>';
     document.getElementById("overlay").hidden = false;
     document.getElementById("modal-close").addEventListener("click", closeModal);
+    var pi = document.getElementById("publish-ig");
+    if (pi) pi.addEventListener("click", async function () {
+      if (await publishToInstagram(c, pi)) { closeModal(); renderPainel(); renderInstagram(); }
+    });
     var mp = document.getElementById("mark-published");
     if (mp) mp.addEventListener("click", async function () {
       try {
@@ -819,7 +974,7 @@
     var dests = [
       { id: "rascunho", nome: "Salvar rascunho", desc: "Continue editando depois" },
       { id: "agendado", nome: "Agendar", desc: "Escolha data e horário" },
-      { id: "publicado", nome: "Publicar agora", desc: "Marca como publicado" }
+      { id: "publicado", nome: "Publicar agora", desc: (state.igConta && state.igConta.status === "ativo") ? "Envia direto pro Instagram" : "Marca como publicado" }
     ];
     document.getElementById("dest-grid").innerHTML = dests.map(function (d) {
       return '<div class="dest-card ' + (wizard.dest === d.id ? "selected" : "") + '" data-dest="' + d.id + '"><h4>' + d.nome + '</h4><p>' + d.desc + '</p></div>';
@@ -873,6 +1028,10 @@
     } else if (wizard.dest === "publicado") {
       payload.data_publicada = new Date().toISOString();
     }
+    // com Instagram conectado, "Publicar agora" salva como rascunho e publica de verdade;
+    // o servidor só marca "publicado" depois que o Instagram confirmar o post.
+    var igPublish = wizard.dest === "publicado" && state.igConta && state.igConta.status === "ativo";
+    if (igPublish) { payload.status = "rascunho"; delete payload.data_publicada; }
 
     btn.disabled = true; var orig = btn.textContent; btn.textContent = "Salvando…";
     try {
@@ -907,9 +1066,14 @@
         } catch (e) { /* não bloqueia o salvamento do carrossel por causa disso */ }
       }
       updateNavPlanBadge();
+      if (igPublish) {
+        var ok = await publishToInstagram(carrossel, btn);
+        if (!ok) toast("Carrossel salvo como rascunho — tente publicar de novo pelo painel.");
+        resetWizard(); showScreen("painel"); return;
+      }
       if (wizard.dest === "rascunho") toast("Rascunho salvo.");
       else if (wizard.dest === "agendado") toast("Agendado para " + fmtDateTime(payload.data_agendada) + ".");
-      else toast("Marcado como publicado" + (state.igConta && state.igConta.status === "ativo" ? " no Instagram." : " (conecte o Instagram para envio automático)."));
+      else toast("Marcado como publicado (conecte o Instagram para envio automático).");
 
       resetWizard(); showScreen("painel");
     } catch (err) {
@@ -981,28 +1145,24 @@
     var connected = state.igConta && state.igConta.status === "ativo";
     document.getElementById("ig-connect").innerHTML = connected ?
       ('<div class="l"><div class="ig-icon">' + ICONS.ig + '</div><div><div style="font-weight:700;">@' + escapeHtml(state.igConta.username) + '</div>' +
-        '<div style="font-size:12px;color:var(--status-pub-fg);font-weight:600;">Conectado (simulado) — publicação automática real via Instagram é uma etapa futura</div></div></div>' +
+        '<div style="font-size:12px;color:var(--status-pub-fg);font-weight:600;">Conectado' + (state.igConta.token_expires_at ? ' · acesso válido até ' + fmtDate(state.igConta.token_expires_at) : '') + '</div></div></div>' +
         '<button class="btn btn-ghost btn-sm" id="ig-toggle">Desconectar</button>')
       :
       ('<div class="l"><div class="ig-icon">' + ICONS.ig + '</div><div><div style="font-weight:700;">Nenhuma conta conectada</div>' +
-        '<div style="font-size:12px;color:var(--ink-muted);">Conecte para simular o fluxo de agendamento — a integração real com a API do Instagram entra numa próxima fase</div></div></div>' +
+        '<div style="font-size:12px;color:var(--ink-muted);">Conecte sua conta Profissional do Instagram para publicar os carrosséis direto pela Vitrine</div></div></div>' +
         '<button class="btn btn-primary btn-sm" id="ig-toggle">Conectar Instagram</button>');
     document.getElementById("ig-toggle").addEventListener("click", async function () {
       try {
         if (connected) {
-          await DB.update("instagram_contas", "corretor_id=eq." + state.profile.id, { status: "inativo" });
+          await callFunction("instagram-oauth-callback", { acao: "desconectar" });
           state.igConta.status = "inativo";
+          renderInstagram();
+          toast("Conta desconectada.");
         } else {
-          var rows = await DB.upsert("instagram_contas", {
-            corretor_id: state.profile.id,
-            instagram_business_id: "sim_" + state.profile.id.slice(0, 8),
-            username: (state.profile.nome || "corretor").toLowerCase().replace(/\s+/g, ""),
-            status: "ativo"
-          }, "corretor_id");
-          state.igConta = rows[0];
+          // abre o login do Instagram; ele volta pra Edge Function, que salva o token e redireciona pra cá
+          var resp = await callFunction("instagram-oauth-callback", { acao: "iniciar" });
+          window.location.href = resp.url;
         }
-        renderInstagram();
-        toast(connected ? "Conta desconectada." : "Conta conectada (simulada).");
       } catch (err) { toast("Erro: " + err.message); }
     });
 
@@ -1063,7 +1223,9 @@
         try {
           // cancelamento e o reset do contador de trial são feitos pela Edge Function (service role) —
           // o cliente não tem mais permissão de escrever em assinaturas/trial_usado diretamente.
-          var resp = await callFunction("gerenciar-assinatura", { acao: "cancelar" });
+          if (!confirm("Cancelar a assinatura? A cobrança recorrente no cartão será encerrada.")) return;
+          var resp = await callFunction("stripe-cancel", {});
+          if (resp.pendente) { toast("Cancelamento enviado — atualize a página em instantes."); return; }
           state.assinatura = resp.assinatura;
           state.profile.trial_usado = 0;
           updateNavPlanBadge(); renderPlano(); toast("Assinatura cancelada — voltando ao teste grátis.");
@@ -1098,43 +1260,57 @@
     var plano = findPlano(planPending);
     if (!plano) return;
     var preco = planPeriod === "anual" ? plano.preco_anual : plano.preco_mensal;
-    var methods = [["cartao", "Cartão de crédito"], ["pix", "Pix"], ["boleto", "Boleto"]];
     var box = document.getElementById("checkout-box");
     box.hidden = false;
     box.innerHTML = '<div class="checkout-card">' +
       '<h3 style="font-size:16px;margin-bottom:14px;">Assinar Vitrine ' + escapeHtml(plano.nome) + '</h3>' +
       '<div class="checkout-summary"><span>' + escapeHtml(plano.nome) + ' · ' + (planPeriod === "anual" ? "anual" : "mensal") + '</span><span class="mono">' + fmtBRL(preco) + '</span></div>' +
-      '<div style="font-size:12px;font-weight:600;color:var(--ink-muted);margin-bottom:8px;">Forma de pagamento</div>' +
-      '<p style="font-size:11.5px;color:var(--ink-faint);margin:0 0 12px;">Cobrança real ainda não conectada — isto confirma o plano na sua conta sem capturar dados de cartão.</p>' +
-      '<div class="pay-methods" id="pay-methods">' + methods.map(function (m) {
-        return '<label class="pay-method ' + (payMethod === m[0] ? "selected" : "") + '" data-method="' + m[0] + '">' +
-          '<input type="radio" name="paym" ' + (payMethod === m[0] ? "checked" : "") + '> ' + m[1] + '</label>';
-      }).join("") + '</div>' +
-      '<button class="btn btn-primary" id="confirm-sub" style="width:100%;justify-content:center;">Confirmar assinatura</button>' +
+      '<p style="font-size:12px;color:var(--ink-muted);margin:0 0 12px;">Você será levado ao checkout seguro do Stripe para pagar com cartão de crédito. A Vitrine não vê nem guarda os dados do seu cartão.</p>' +
+      '<button class="btn btn-primary" id="confirm-sub" style="width:100%;justify-content:center;">Ir para o pagamento</button>' +
       '<button class="btn btn-ghost btn-sm" id="cancel-checkout" style="width:100%;justify-content:center;margin-top:8px;">Cancelar</button></div>';
-    qsa("#pay-methods .pay-method").forEach(function (el) {
-      el.addEventListener("click", function () { payMethod = el.dataset.method; renderCheckout(); });
-    });
-    document.getElementById("cancel-checkout").addEventListener("click", function () { planPending = null; document.getElementById("checkout-box").hidden = true; document.getElementById("checkout-box").innerHTML = ""; });
+    document.getElementById("cancel-checkout").addEventListener("click", function () { planPending = null; box.hidden = true; box.innerHTML = ""; });
     document.getElementById("confirm-sub").addEventListener("click", async function () {
       var btn = this;
-      btn.disabled = true; btn.innerHTML = '<div class="spin" style="border-top-color:#fff; border-color:rgba(255,255,255,0.35);"></div> Confirmando…';
+      btn.disabled = true; btn.innerHTML = '<div class="spin" style="border-top-color:#fff; border-color:rgba(255,255,255,0.35);"></div> Abrindo checkout…';
       try {
-        // ativação da assinatura passa pela Edge Function (service role) — o cliente não tem mais
-        // permissão de INSERT/UPDATE direto em assinaturas. Continua sendo uma ativação simulada
-        // (sem captura de cartão), mas agora centralizada no backend, pronta pra virar o webhook
-        // do Stripe no dia em que o pagamento real for integrado.
-        var resp = await callFunction("gerenciar-assinatura", { acao: "assinar", plano_id: plano.id, periodo: planPeriod });
-        state.assinatura = resp.assinatura;
-        planPending = null;
-        updateNavPlanBadge(); renderPlano();
-        toast("Assinatura " + plano.nome + " ativada.");
+        // a ativação do plano acontece só no servidor, pelo webhook do Stripe, depois do pagamento confirmado
+        var resp = await callFunction("stripe-checkout", { plano_id: plano.id, periodo: planPeriod });
+        window.location.href = resp.url;
       } catch (err) {
-        toast("Erro ao confirmar: " + err.message);
-      } finally {
-        btn.disabled = false;
+        toast("Erro: " + err.message);
+        btn.disabled = false; btn.textContent = "Ir para o pagamento";
       }
     });
+  }
+
+  // trata o retorno do Stripe (?checkout=...) e do Instagram (?instagram=...)
+  async function handleReturnParams() {
+    var params = new URLSearchParams(location.search);
+    var ck = params.get("checkout"), ig = params.get("instagram");
+    if (!ck && !ig) return;
+    history.replaceState(null, "", location.pathname);
+    if (ck === "cancelado") toast("Pagamento cancelado — nada foi cobrado.");
+    if (ck === "sucesso") {
+      toast("Pagamento recebido! Ativando seu plano…");
+      // o webhook pode levar alguns segundos: consulta até a assinatura virar "ativa"
+      for (var i = 0; i < 10; i++) {
+        var rows = await DB.select("assinaturas", "select=*&corretor_id=eq." + state.profile.id + "&status=eq.ativa&limit=1");
+        if (rows && rows[0]) { state.assinatura = rows[0]; break; }
+        await new Promise(function (r) { setTimeout(r, 1500); });
+      }
+      updateNavPlanBadge();
+      showScreen("plano");
+      toast(state.assinatura && state.assinatura.status === "ativa" ? "Plano ativado. Bem-vindo à Vitrine Pro!" : "Pagamento em processamento — o plano aparece em instantes.");
+    }
+    var igMsgs = { conectado: "Instagram conectado!", negado: "Conexão com o Instagram cancelada.", expirado: "O link de conexão expirou — tente de novo.", erro: "Não foi possível conectar o Instagram. Verifique se a conta é Profissional (Empresa ou Criador)." };
+    if (ig) {
+      if (ig === "conectado") {
+        var c = await DB.select("instagram_contas", "select=*&corretor_id=eq." + state.profile.id + "&limit=1");
+        state.igConta = (c || [])[0] || null;
+      }
+      showScreen("instagram");
+      toast(igMsgs[ig] || igMsgs.erro);
+    }
   }
 
   /* ============================================================
@@ -1229,6 +1405,7 @@
       updateNavPlanBadge();
       resetWizard();
       showScreen("painel");
+      handleReturnParams().catch(function (e) { console.error(e); });
     } catch (err) {
       await Auth.signOut();
       loading.hidden = true;

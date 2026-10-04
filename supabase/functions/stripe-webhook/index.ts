@@ -44,9 +44,12 @@ Deno.serve(async (req) => {
         break;
       }
       case "invoice.paid": {
-        const inv = event.data.object as Stripe.Invoice;
-        if (inv.subscription) {
-          const sub = await stripe.subscriptions.retrieve(inv.subscription as string);
+        // deno-lint-ignore no-explicit-any
+        const inv = event.data.object as any;
+        // API nova (2025-03+): a assinatura fica em parent.subscription_details; API antiga: inv.subscription
+        const subId = inv.subscription ?? inv.parent?.subscription_details?.subscription;
+        if (subId) {
+          const sub = await stripe.subscriptions.retrieve(typeof subId === "string" ? subId : subId.id);
           await ativar(db, sub);   // renovação: atualiza data_fim
         }
         break;
@@ -61,6 +64,13 @@ Deno.serve(async (req) => {
   }
 });
 
+// API nova (2025-03+) move current_period_end para os itens da assinatura
+// deno-lint-ignore no-explicit-any
+function fimDoPeriodo(sub: any): string | null {
+  const t = sub.items?.data?.[0]?.current_period_end ?? sub.current_period_end;
+  return t ? new Date(t * 1000).toISOString() : null;
+}
+
 // deno-lint-ignore no-explicit-any
 async function ativar(db: any, sub: Stripe.Subscription, sessionId?: string) {
   const { corretor_id, plano_id, periodo } = sub.metadata;
@@ -72,7 +82,7 @@ async function ativar(db: any, sub: Stripe.Subscription, sessionId?: string) {
     status: "ativa",
     stripe_customer_id: sub.customer as string,
     stripe_subscription_id: sub.id,
-    data_fim: new Date(sub.current_period_end * 1000).toISOString(),
+    data_fim: fimDoPeriodo(sub),
   };
   if (sessionId) campos.stripe_checkout_session_id = sessionId;
 

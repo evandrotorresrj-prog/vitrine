@@ -9,9 +9,8 @@
 alter table public.assinaturas
   add column if not exists stripe_customer_id         text,
   add column if not exists stripe_subscription_id     text,
-  add column if not exists stripe_checkout_session_id text,
-  add column if not exists periodo                    text,
-  add column if not exists periodo_fim                timestamptz;
+  add column if not exists stripe_checkout_session_id text;
+-- (status e periodo já são enums com os valores necessários; data_fim guarda o fim do período pago)
 
 create unique index if not exists assinaturas_stripe_sub_uidx
   on public.assinaturas (stripe_subscription_id) where stripe_subscription_id is not null;
@@ -80,18 +79,3 @@ insert into storage.buckets (id, name, public)
 drop policy if exists "slides-render upload dono" on storage.objects;
 create policy "slides-render upload dono" on storage.objects for insert to authenticated
   with check (bucket_id = 'slides-render' and (storage.foldername(name))[1] = auth.uid()::text);
-
--- ---------- STATUS DA ASSINATURA ----------
--- libera os novos status usados pelo webhook ('cancelada', 'inadimplente').
--- remove qualquer CHECK antigo sobre assinaturas.status e recria com a lista completa.
-do $$
-declare r record;
-begin
-  for r in select conname from pg_constraint
-           where conrelid = 'public.assinaturas'::regclass and contype = 'c'
-             and pg_get_constraintdef(oid) ilike '%status%'
-  loop execute format('alter table public.assinaturas drop constraint %I', r.conname); end loop;
-end $$;
-alter table public.assinaturas
-  add constraint assinaturas_status_check check (status in ('trial','ativa','inadimplente','cancelada')) not valid;
--- "not valid" = não quebra se já existirem linhas antigas com outro status; vale para as novas.

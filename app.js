@@ -84,13 +84,79 @@
     for (var k = 0; k < faltando.length; k++) {
       var foto = (resp.imagens || [])[k];
       if (!foto) continue;
-      faltando[k].s.imagem_url = foto.url;
-      faltando[k].s.imagem_prompt = foto.credito;   // guarda o crédito do fotógrafo
-      if (salvarNoBanco && faltando[k].s.id) {
-        try { await DB.update("slides", "id=eq." + faltando[k].s.id, { imagem_url: foto.url, imagem_prompt: foto.credito }); } catch (e) { }
-      }
+      aplicarFoto(faltando[k].s, foto);
+      if (salvarNoBanco) await salvarFotoDoSlide(faltando[k].s);
     }
   }
+  // imagem_prompt guarda "crédito||link do fotógrafo" (o Unsplash exige crédito com link sempre que a foto aparece)
+  function aplicarFoto(slide, foto) {
+    slide._vistas = (slide._vistas || []).concat(slide.imagem_url ? [slide.imagem_url] : []);
+    slide.imagem_url = foto.url;
+    slide.imagem_prompt = (foto.credito || "") + "||" + (foto.link || "");
+  }
+  async function salvarFotoDoSlide(slide) {
+    if (!slide.id) return;
+    try { await DB.update("slides", "id=eq." + slide.id, { imagem_url: slide.imagem_url, imagem_prompt: slide.imagem_prompt }); } catch (e) { }
+  }
+  function creditoDe(slide) {
+    if (!isFotoReal(slide.imagem_url)) return null;
+    var partes = String(slide.imagem_prompt || "").split("||");
+    return { texto: partes[0] || "Foto", link: partes[1] || "" };
+  }
+
+  // controles de foto por slide: trocar (outra foto do banco), buscar por termo, ou enviar a própria foto
+  function fotoControlsHtml(slides) {
+    return '<div class="fotos-ctl">' + slides.map(function (s, i) {
+      var cr = creditoDe(s);
+      var credHtml = cr ? (cr.link ? '<a href="' + escapeHtml(cr.link) + '" target="_blank" rel="noopener">' + escapeHtml(cr.texto) + '</a>' : escapeHtml(cr.texto)) : '<span class="sem">sem foto</span>';
+      return '<div class="foto-ctl"><div class="foto-top"><span class="mono">' + (i + 1) + '</span><span class="cred">' + credHtml + '</span></div>' +
+        '<div class="foto-btns">' +
+        '<button type="button" class="btn btn-ghost btn-xs" data-foto-trocar="' + i + '">Trocar</button>' +
+        '<button type="button" class="btn btn-ghost btn-xs" data-foto-buscar="' + i + '">Buscar…</button>' +
+        '<label class="btn btn-ghost btn-xs">Minha foto<input type="file" accept="image/jpeg,image/png,image/webp" data-foto-up="' + i + '" hidden></label>' +
+        '</div></div>';
+    }).join("") + '</div>';
+  }
+  function wireFotoControls(root, slides, contexto, persistir, redesenhar) {
+    async function trocar(i, termo, btn) {
+      var s = slides[i], orig = btn.innerHTML;
+      btn.disabled = true; btn.innerHTML = '<div class="spin"></div>';
+      try {
+        var body = { contexto: contexto, slides: [{ titulo: s.titulo, corpo: s.corpo }], excluir: (s._vistas || []).concat(s.imagem_url ? [s.imagem_url] : []) };
+        if (termo) body.termos = [termo];
+        var resp = await callFunction("buscar-imagens", body);
+        var foto = (resp.imagens || [])[0];
+        if (!foto) { toast("Não achei outra foto pra esse slide — tente “Buscar…” com outras palavras."); return; }
+        aplicarFoto(s, foto);
+        if (persistir) await salvarFotoDoSlide(s);
+        redesenhar();
+      } catch (err) { toast("Erro ao buscar foto: " + err.message); }
+      finally { btn.disabled = false; btn.innerHTML = orig; }
+    }
+    qsa("[data-foto-trocar]", root).forEach(function (b) { b.onclick = function () { trocar(+b.dataset.fotoTrocar, null, b); }; });
+    qsa("[data-foto-buscar]", root).forEach(function (b) {
+      b.onclick = function () {
+        var t = window.prompt("Buscar foto por (ex.: varanda com vista para o mar, casal recebendo as chaves):");
+        if (t && t.trim()) trocar(+b.dataset.fotoBuscar, t.trim(), b);
+      };
+    });
+    qsa("[data-foto-up]", root).forEach(function (inp) {
+      inp.onchange = async function () {
+        var f = inp.files && inp.files[0]; if (!f) return;
+        if (f.size > 15 * 1024 * 1024) { toast("Foto muito grande (máx. 15 MB)."); return; }
+        try {
+          toast("Enviando sua foto…");
+          var ext = (f.type.split("/")[1] || "jpg").replace("jpeg", "jpg");
+          var url = await uploadArquivo(f, state.profile.id + "/fotos/" + Date.now() + "." + ext, f.type);
+          var s = slides[+inp.dataset.fotoUp];
+          aplicarFoto(s, { url: url, credito: "Foto do corretor", link: "" });
+          if (persistir) await salvarFotoDoSlide(s);
+          redesenhar();
+        } catch (err) { toast("Erro ao enviar a foto: " + err.message); }
+      };
+    });
+  }
+
   function contextoDoCarrossel(c) {
     if (c.origem === "imovel") { var p = findProp(c.propriedade_id); return p ? (p.tipo || "imóvel") + " em " + (p.bairro || "") + ", " + (p.cidade || "") : ""; }
     if (c.origem === "topico") { var t = findTopic(c.topico_id); return t ? "mercado imobiliário, " + t.categoria + ": " + t.gancho : ""; }
@@ -342,7 +408,8 @@
     return { size: size, lines: lines, height: lines.length * size * opts.lh };
   }
 
-  async function renderSlideJpeg(slide, i, total, tplSlug, bgImg) {
+  async function renderSlideJpeg(slide, i, total, tplSlug, bgImg, alto) {
+    var SLIDE_W = 1080, SLIDE_H = alto ? 1920 : 1350;   // alto = 9:16 (stories/reels)
     var th = SLIDE_THEMES[tplSlug] || SLIDE_THEMES.minimalista;
     var cv = document.createElement("canvas"); cv.width = SLIDE_W; cv.height = SLIDE_H;
     var ctx = cv.getContext("2d");
@@ -350,7 +417,7 @@
     g.addColorStop(0, th.bg[0]); g.addColorStop(1, th.bg[1]);
     ctx.fillStyle = g; ctx.fillRect(0, 0, SLIDE_W, SLIDE_H);
 
-    var pad = 96, top = pad;
+    var pad = 96, top = alto ? 250 : pad;          // 9:16: deixa livre a área da barra do Instagram
     var ink = th.ink, tagColor = th.tag;
     if (bgImg) {
       // foto relacionada ocupando o slide inteiro (object-fit:cover) + véu escuro pro texto ficar legível
@@ -371,7 +438,7 @@
       ctx.fillText(String(slide.tag).toUpperCase(), pad, top);
       top += 64;
     }
-    var bottomLimit = SLIDE_H - pad - 60;          // reserva espaço do contador
+    var bottomLimit = SLIDE_H - (alto ? 340 : pad) - 60;   // reserva espaço do contador (e da UI do stories/reels)
     var avail = bottomLimit - top;
     var title = fitText(ctx, slide.titulo, { size: i === 0 ? 96 : 80, min: 44, weight: 800, family: display, maxW: SLIDE_W - pad * 2, maxH: avail * 0.55, lh: 1.08 });
     ctx.fillStyle = ink; ctx.font = "800 " + title.size + "px " + display;
@@ -383,7 +450,7 @@
     var by = bottomLimit - body.height;           // corpo alinhado embaixo, como no preview
     body.lines.forEach(function (l, k) { ctx.fillText(l, pad, by + k * body.size * 1.38); });
     ctx.globalAlpha = 0.7; ctx.font = "500 30px \"JetBrains Mono\", monospace"; ctx.textAlign = "right";
-    ctx.fillText((i + 1) + "/" + total, SLIDE_W - pad, SLIDE_H - pad - 30);
+    ctx.fillText((i + 1) + "/" + total, SLIDE_W - pad, bottomLimit + 30);
     ctx.globalAlpha = 1; ctx.textAlign = "left";
 
     return new Promise(function (resolve, reject) {
@@ -392,12 +459,13 @@
     });
   }
 
-  async function uploadSlide(blob, path) {
+  function uploadSlide(blob, path) { return uploadArquivo(blob, path, "image/jpeg"); }
+  async function uploadArquivo(blob, path, tipo) {
     await Auth.ensureValidToken();
     var s = Auth.get();
     var res = await fetch(SUPABASE_URL + "/storage/v1/object/slides-render/" + path, {
       method: "POST",
-      headers: { apikey: SUPABASE_KEY, Authorization: "Bearer " + s.access_token, "Content-Type": "image/jpeg" },
+      headers: { apikey: SUPABASE_KEY, Authorization: "Bearer " + s.access_token, "Content-Type": tipo || "application/octet-stream" },
       body: blob
     });
     if (!res.ok) throw new Error("Upload da imagem falhou: " + (await res.text().catch(function () { return res.status; })));
@@ -405,7 +473,8 @@
   }
 
   // gera os JPEGs de todos os slides em memória (ainda não sobe nada)
-  async function renderCarouselBlobs(c, onProgress) {
+  async function renderCarouselBlobs(c, onProgress, formato) {
+    var alto = formato === "stories" || formato === "reels";
     var tpl = findTemplateById(c.template_id);
     var slug = (tpl && tpl.slug) || "minimalista";
     try { await Promise.all([document.fonts.load('800 80px "Bricolage Grotesque"'), document.fonts.load('500 44px "Plus Jakarta Sans"'), document.fonts.load('700 34px "Plus Jakarta Sans"')]); } catch (e) { }
@@ -416,7 +485,7 @@
       var sl = c.slides[i];
       if (onProgress) onProgress(i + 1, c.slides.length);
       var img = slideImageUrl(sl) ? await loadImage(slideImageUrl(sl)) : null;
-      var blob = await renderSlideJpeg(sl, i, c.slides.length, slug, img);
+      var blob = await renderSlideJpeg(sl, i, c.slides.length, slug, img, alto);
       out.push({ blob: blob, url: URL.createObjectURL(blob) });
     }
     return out;
@@ -435,70 +504,128 @@
 
   function legendaPadrao(c) { return c.legenda || c.slides.map(function (s) { return s.titulo; }).join(" · "); }
 
-  // prévia no formato de post do Instagram: o corretor vê exatamente as imagens que serão publicadas.
-  // modo "publicar" → botões Voltar / Publicar (resolve true/false). modo "ver" → só Fechar.
-  function showPostPreview(c, blobs, modo) {
+  var FORMATOS = {
+    feed: { nome: "Feed", desc: "Carrossel no feed (4:5)", alto: false },
+    reels: { nome: "Reels", desc: "Vídeo 9:16 — 3 s por slide", alto: true },
+    stories: { nome: "Stories", desc: "Um story por slide (9:16)", alto: true }
+  };
+
+  // gera um MP4 9:16 no navegador: cada slide aparece 3 s, com transição suave
+  async function gerarVideoReels(blobs, onProgress) {
+    var tipos = ["video/mp4;codecs=avc1.42E01E", "video/mp4;codecs=avc1", "video/mp4"];
+    var tipo = window.MediaRecorder && tipos.find(function (t) { return MediaRecorder.isTypeSupported(t); });
+    if (!tipo) throw new Error("Seu navegador não consegue gerar vídeo MP4. Use o Google Chrome atualizado para publicar Reels.");
+    var W = 1080, H = 1920, POR = 3000, FADE = 450;
+    var imgs = await Promise.all(blobs.map(function (b) { return createImageBitmap(b.blob); }));
+    var cv = document.createElement("canvas"); cv.width = W; cv.height = H;
+    var ctx = cv.getContext("2d"); ctx.drawImage(imgs[0], 0, 0, W, H);
+    var rec = new MediaRecorder(cv.captureStream(30), { mimeType: tipo, videoBitsPerSecond: 8000000 });
+    var partes = []; rec.ondataavailable = function (e) { if (e.data && e.data.size) partes.push(e.data); };
+    var total = imgs.length * POR;
+    rec.start(250);
+    var t0 = performance.now();
+    await new Promise(function (fim) {
+      (function quadro() {
+        var t = performance.now() - t0;
+        if (t >= total) { fim(); return; }
+        var i = Math.min(imgs.length - 1, Math.floor(t / POR)), local = t - i * POR;
+        ctx.globalAlpha = 1; ctx.drawImage(imgs[i], 0, 0, W, H);
+        if (local > POR - FADE && i < imgs.length - 1) { ctx.globalAlpha = (local - (POR - FADE)) / FADE; ctx.drawImage(imgs[i + 1], 0, 0, W, H); ctx.globalAlpha = 1; }
+        if (onProgress) onProgress(Math.min(99, Math.round(t / total * 100)));
+        requestAnimationFrame(quadro);
+      })();
+    });
+    await new Promise(function (r) { rec.onstop = r; rec.stop(); });
+    return new Blob(partes, { type: "video/mp4" });
+  }
+
+  // prévia no formato do Instagram com escolha Feed / Reels / Stories.
+  // modo "publicar" → resolve {formato, blobs} ou null. modo "ver" → só visualização.
+  function abrirPrevia(c, modo, onProgressInicial) {
     return new Promise(function (resolve) {
-      var idx = 0, user = (state.igConta && state.igConta.status === "ativo" && state.igConta.username) || (state.profile.nome || "seu_perfil").toLowerCase().replace(/\s+/g, "");
+      var formato = "feed", idx = 0, cache = {}, carregando = false;
+      var user = (state.igConta && state.igConta.status === "ativo" && state.igConta.username) || (state.profile.nome || "seu_perfil").toLowerCase().replace(/\s+/g, "");
       var body = document.getElementById("modal-body");
-      function done(v) { blobs.forEach(function (b) { if (modo === "ver") URL.revokeObjectURL(b.url); }); closeModal(); resolve(v); }
+      function liberar() { Object.keys(cache).forEach(function (k) { cache[k].forEach(function (b) { setTimeout(function () { URL.revokeObjectURL(b.url); }, 60000); }); }); }
+      function done(v) { liberar(); closeModal(); resolve(v); }
+      async function carregar(f) {
+        if (cache[f]) return;
+        carregando = true; draw();
+        try { cache[f] = await renderCarouselBlobs(c, function (n, t) { var el = document.getElementById("pv-load"); if (el) el.textContent = "Gerando imagem " + n + "/" + t + "…"; if (onProgressInicial) onProgressInicial(n, t); }, f); }
+        catch (err) { toast("Erro ao gerar a prévia: " + err.message); }
+        carregando = false; idx = 0; draw();
+      }
       function draw() {
+        var blobs = cache[formato] || [], F = FORMATOS[formato];
+        var tabs = '<div class="fmt-tabs">' + Object.keys(FORMATOS).map(function (k) {
+          return '<button type="button" class="fmt-tab' + (k === formato ? " on" : "") + '" data-fmt="' + k + '"><b>' + FORMATOS[k].nome + '</b><span>' + FORMATOS[k].desc + '</span></button>';
+        }).join("") + '</div>';
+        var midia = carregando || !blobs.length
+          ? '<div class="igpv-media' + (F.alto ? " alto" : "") + '"><div class="igpv-load"><div class="spin"></div><span id="pv-load">Gerando imagens…</span></div></div>'
+          : '<div class="igpv-media' + (F.alto ? " alto" : "") + '"><img src="' + blobs[idx].url + '" alt="Slide ' + (idx + 1) + '">' +
+            (formato !== "feed" ? '<div class="igpv-bars">' + blobs.map(function (b, k) { return '<i class="' + (k <= idx ? "on" : "") + '"></i>'; }).join("") + '</div>' : '') +
+            (idx > 0 ? '<button class="igpv-nav l" id="pv-prev" aria-label="Anterior">‹</button>' : '') +
+            (idx < blobs.length - 1 ? '<button class="igpv-nav r" id="pv-next" aria-label="Próximo">›</button>' : '') +
+            '<span class="igpv-count">' + (idx + 1) + '/' + blobs.length + '</span>' +
+            (formato === "reels" ? '<span class="igpv-tag">Reels · ' + (blobs.length * 3) + ' s</span>' : '') + '</div>';
+        var aviso = formato === "feed" && (c.slides.length < 2 || c.slides.length > 10) ? '<p class="fmt-aviso">O carrossel do feed precisa ter de 2 a 10 slides.</p>' : "";
         body.innerHTML =
           '<div class="modal-head"><div><h3 style="font-size:18px;">Como vai ficar no Instagram</h3>' +
-          '<p style="margin:4px 0 0;font-size:12.5px;color:var(--ink-muted);">' + (modo === "publicar" ? "Confira cada slide antes de publicar." : "Prévia das imagens finais do carrossel.") + '</p></div>' +
-          '<button class="modal-close" id="pv-close">' + ICONS.close + '</button></div>' +
-          '<div class="igpv"><div class="igpv-head"><div class="igpv-av">' + escapeHtml(user.slice(0, 1).toUpperCase()) + '</div><b>' + escapeHtml(user) + '</b></div>' +
-          '<div class="igpv-media"><img src="' + blobs[idx].url + '" alt="Slide ' + (idx + 1) + '">' +
-          (idx > 0 ? '<button class="igpv-nav l" id="pv-prev" aria-label="Anterior">‹</button>' : '') +
-          (idx < blobs.length - 1 ? '<button class="igpv-nav r" id="pv-next" aria-label="Próximo">›</button>' : '') +
-          '<span class="igpv-count">' + (idx + 1) + '/' + blobs.length + '</span></div>' +
-          '<div class="igpv-dots">' + blobs.map(function (b, k) { return '<span class="' + (k === idx ? "on" : "") + '"></span>'; }).join("") + '</div>' +
-          '<div class="igpv-cap"><b>' + escapeHtml(user) + '</b> ' + escapeHtml(legendaPadrao(c)) + '</div></div>' +
+          '<p style="margin:4px 0 0;font-size:12.5px;color:var(--ink-muted);">Escolha onde publicar e confira cada slide.</p></div>' +
+          '<button class="modal-close" id="pv-close">' + ICONS.close + '</button></div>' + tabs +
+          '<div class="igpv' + (F.alto ? " alto" : "") + '"><div class="igpv-head"><div class="igpv-av">' + escapeHtml(user.slice(0, 1).toUpperCase()) + '</div><b>' + escapeHtml(user) + '</b></div>' + midia +
+          (formato === "feed" ? '<div class="igpv-dots">' + blobs.map(function (b, k) { return '<span class="' + (k === idx ? "on" : "") + '"></span>'; }).join("") + '</div>' : '') +
+          (formato !== "stories" ? '<div class="igpv-cap"><b>' + escapeHtml(user) + '</b> ' + escapeHtml(legendaPadrao(c)) + '</div>' : '') + '</div>' + aviso +
           '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">' +
           (modo === "publicar"
-            ? '<button class="btn btn-ghost btn-sm" id="pv-back">Voltar e ajustar</button><button class="btn btn-primary btn-sm" id="pv-ok">' + ICONS.ig + ' Publicar no Instagram</button>'
+            ? '<button class="btn btn-ghost btn-sm" id="pv-back">Voltar e ajustar</button><button class="btn btn-primary btn-sm" id="pv-ok"' + (carregando || aviso ? " disabled" : "") + '>' + ICONS.ig + ' Publicar no ' + F.nome + '</button>'
             : '<button class="btn btn-ghost btn-sm" id="pv-back">Fechar</button>') + '</div>';
-        document.getElementById("pv-close").onclick = function () { done(false); };
-        document.getElementById("pv-back").onclick = function () { done(false); };
-        var ok = document.getElementById("pv-ok"); if (ok) ok.onclick = function () { done(true); };
+        document.getElementById("pv-close").onclick = function () { done(null); };
+        document.getElementById("pv-back").onclick = function () { done(null); };
+        var ok = document.getElementById("pv-ok"); if (ok) ok.onclick = function () { done({ formato: formato, blobs: cache[formato] }); };
         var pr = document.getElementById("pv-prev"); if (pr) pr.onclick = function () { idx--; draw(); };
         var nx = document.getElementById("pv-next"); if (nx) nx.onclick = function () { idx++; draw(); };
+        qsa("[data-fmt]", body).forEach(function (b) { b.onclick = function () { if (carregando) return; formato = b.dataset.fmt; idx = 0; draw(); carregar(formato); }; });
       }
-      draw();
       document.getElementById("overlay").hidden = false;
+      carregar("feed");
     });
   }
 
-  async function previewCarousel(c, btn) {
+  async function previewCarousel(c) {
     if (!c.slides || !c.slides.length) { toast("Este carrossel não tem slides."); return; }
-    var orig = btn ? btn.innerHTML : "";
-    if (btn) btn.disabled = true;
-    try {
-      var blobs = await renderCarouselBlobs(c, function (n, t) { if (btn) btn.innerHTML = '<div class="spin"></div> Gerando ' + n + "/" + t + "…"; });
-      await showPostPreview(c, blobs, "ver");
-    } catch (err) { toast("Erro ao gerar a prévia: " + err.message); }
-    finally { if (btn) { btn.disabled = false; btn.innerHTML = orig; } }
+    await abrirPrevia(c, "ver");
   }
 
   async function publishToInstagram(c, btn) {
     if (!(state.igConta && state.igConta.status === "ativo")) { toast("Conecte o Instagram primeiro (aba Instagram)."); return false; }
-    if (!c.slides || c.slides.length < 2) { toast("O Instagram exige pelo menos 2 slides."); return false; }
-    if (c.slides.length > 10) { toast("O Instagram aceita no máximo 10 slides."); return false; }
+    if (!c.slides || !c.slides.length) { toast("Este carrossel não tem slides."); return false; }
     var orig = btn ? btn.innerHTML : "";
     function label(t) { if (btn) btn.innerHTML = '<div class="spin"></div> ' + t; }
-    if (btn) btn.disabled = true;
     try {
-      var blobs = await renderCarouselBlobs(c, function (n, t) { label("Gerando imagem " + n + "/" + t + "…"); });
-      if (btn) { btn.disabled = false; btn.innerHTML = orig; }
-      var aprovado = await showPostPreview(c, blobs, "publicar");   // sempre mostra como ficou antes de postar
-      blobs.forEach(function (b) { setTimeout(function () { URL.revokeObjectURL(b.url); }, 60000); });
-      if (!aprovado) { toast("Publicação cancelada — nada foi enviado ao Instagram."); return false; }
+      var escolha = await abrirPrevia(c, "publicar");    // sempre mostra como ficou e pergunta Feed / Reels / Stories
+      if (!escolha) { toast("Publicação cancelada — nada foi enviado ao Instagram."); return false; }
       if (btn) btn.disabled = true;
-      await uploadCarouselBlobs(c, blobs, function (n, t) { label("Enviando imagem " + n + "/" + t + "…"); });
-      label("Publicando no Instagram…");
-      var resp = await callFunction("instagram-publicar", { carrossel_id: c.id, legenda: legendaPadrao(c) });
+      var pasta = state.profile.id + "/" + c.id + "/" + Date.now() + "-" + escolha.formato;
+      var payload = { carrossel_id: c.id, legenda: legendaPadrao(c), formato: escolha.formato };
+      if (escolha.formato === "reels") {
+        var video = await gerarVideoReels(escolha.blobs, function (pct) { label("Gerando vídeo " + pct + "%…"); });
+        label("Enviando vídeo…");
+        payload.video_url = await uploadArquivo(video, pasta + "/reels.mp4", "video/mp4");
+      } else {
+        payload.urls = [];
+        for (var i = 0; i < escolha.blobs.length; i++) {
+          label("Enviando imagem " + (i + 1) + "/" + escolha.blobs.length + "…");
+          payload.urls.push(await uploadSlide(escolha.blobs[i].blob, pasta + "/" + (i + 1) + ".jpg"));
+        }
+        if (escolha.formato === "feed") {
+          for (var k = 0; k < c.slides.length; k++) { c.slides[k].render_url = payload.urls[k]; try { await DB.update("slides", "id=eq." + c.slides[k].id, { render_url: payload.urls[k] }); } catch (e) { } }
+        }
+      }
+      label(escolha.formato === "reels" ? "Publicando Reels (o Instagram processa o vídeo)…" : "Publicando no " + FORMATOS[escolha.formato].nome + "…");
+      var resp = await callFunction("instagram-publicar", payload);
       c.status = "publicado"; c.data_publicada = resp.data_publicada; c.instagram_permalink = resp.permalink;
-      toast("Publicado no Instagram!");
+      toast("Publicado no " + FORMATOS[escolha.formato].nome + " do Instagram!");
       return true;
     } catch (err) {
       toast("Erro ao publicar: " + err.message);
@@ -701,13 +828,22 @@
       '<span class="pill ' + pillCls + '" style="margin-top:6px;">' + c.status + '</span></div>' +
       '<button class="modal-close" id="modal-close">' + ICONS.close + '</button></div>' +
       '<div class="carousel-strip">' + slideStrip(c.slides, tpl && tpl.slug, false, meta.art) + '</div>' +
+      (c.status !== "publicado" ? '<div class="fotos-titulo">Fotos dos slides</div>' + fotoControlsHtml(c.slides) : "") +
       (c.direcionamento ? '<div style="font-size:12px;color:var(--ink-muted);margin-bottom:8px;"><strong>Direcionamento usado:</strong> ' + escapeHtml(c.direcionamento) + '</div>' : "") +
       '<div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">' +
       '<span style="font-size:12px;color:var(--ink-faint);">' + escapeHtml(meta.sub) + '</span>' + extra + '</div>';
     document.getElementById("overlay").hidden = false;
     document.getElementById("modal-close").addEventListener("click", closeModal);
+    if (c.status !== "publicado") wireFotoControls(document.getElementById("modal-body"), c.slides, contextoDoCarrossel(c), true, function () { openCarouselModal(c.id); });
+    // carrossel antigo sem foto: busca as fotos reais uma vez e redesenha
+    if (!c._buscouFotos && c.slides.some(function (s) { return !isFotoReal(s.imagem_url); })) {
+      c._buscouFotos = true;
+      garantirFotosReais(c.slides, contextoDoCarrossel(c), true)
+        .then(function () { if (!document.getElementById("overlay").hidden) openCarouselModal(c.id); renderPainel(); })
+        .catch(function (e) { toast("Não consegui buscar as fotos: " + e.message); });
+    }
     var pv = document.getElementById("preview-ig");
-    if (pv) pv.addEventListener("click", async function () { await previewCarousel(c, pv); openCarouselModal(c.id); });
+    if (pv) pv.addEventListener("click", async function () { await previewCarousel(c); openCarouselModal(c.id); });
     var pi = document.getElementById("publish-ig");
     if (pi) pi.addEventListener("click", async function () {
       if (await publishToInstagram(c, pi)) { closeModal(); renderPainel(); renderInstagram(); }
@@ -1078,7 +1214,14 @@
     qsa("[data-tpl]").forEach(function (el) {
       el.addEventListener("click", function () { wizard.templateSlug = el.dataset.tpl; renderTplStep(); });
     });
-    document.getElementById("preview-strip").innerHTML = slideStrip(wizard.slides || [], wizard.templateSlug, false, wizardArt());
+    var strip = document.getElementById("preview-strip");
+    strip.innerHTML = slideStrip(wizard.slides || [], wizard.templateSlug, false, wizardArt());
+    var box = document.getElementById("wiz-fotos");
+    if (!box) { box = document.createElement("div"); box.id = "wiz-fotos"; strip.insertAdjacentElement("afterend", box); }
+    if (wizard.slides && wizard.slides.length) {
+      box.innerHTML = '<div class="fotos-titulo">Fotos dos slides — troque as que quiser</div>' + fotoControlsHtml(wizard.slides);
+      wireFotoControls(box, wizard.slides, wizardContexto(), false, renderTplStep);
+    } else box.innerHTML = "";
   }
 
   function renderDestStep() {

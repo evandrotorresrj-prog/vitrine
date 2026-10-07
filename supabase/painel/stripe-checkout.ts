@@ -79,8 +79,8 @@ Deno.serve(handle(async (req) => {
   const valor = Number(periodo === "anual" ? plano.preco_anual : plano.preco_mensal);
   const meta = { corretor_id: uid, plano_id: String(plano.id), periodo };
 
-  // Oferta de lançamento: 30% off só no 1º mês do plano mensal, até 31/10/2026 23:59 (horário de Brasília)
-  const PROMO_FIM = Date.parse("2026-10-31T23:59:59-03:00");
+  // Oferta de lançamento: 30% off só no 1º mês do plano mensal, oferta de 24h até 08/10/2026 20:00 (horário de Fortaleza)
+  const PROMO_FIM = Date.parse("2026-10-08T20:00:00-03:00");
   let discounts: { coupon: string }[] | undefined;
   if (periodo === "mensal" && Date.now() < PROMO_FIM) {
     const COUPON = "LANCAMENTO30";

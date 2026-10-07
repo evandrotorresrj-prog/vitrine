@@ -37,7 +37,7 @@
   };
 
   function propCoverSvg(tipo) {
-    var grads = { apartamento: ["#1E4FCC", "#3D7FFF"], terreno: ["#0B1B3A", "#3D7FFF"], casa: ["#3D7FFF", "#22D3EE"] };
+    var grads = { apartamento: ["#4F7BFF", "#8B5CFF"], terreno: ["#0B1B3A", "#8B5CFF"], casa: ["#8B5CFF", "#00E0FF"] };
     var g = grads[tipo] || grads.apartamento;
     var shape = tipo === "terreno"
       ? '<path d="M20 78 L44 30 L60 52 L74 26 L100 78 Z" fill="rgba(255,255,255,0.9)"/><circle cx="86" cy="24" r="7" fill="rgba(255,255,255,0.9)"/>'
@@ -45,7 +45,7 @@
     return '<svg viewBox="0 0 120 100" width="100%" height="100%" preserveAspectRatio="xMidYMid slice" style="background:linear-gradient(135deg,' + g[0] + ',' + g[1] + ')">' + shape + '</svg>';
   }
   function topicCoverSvg(categoria) {
-    var g = { Dicas: ["#3D7FFF", "#22D3EE"], Financiamento: ["#0B1B3A", "#3D7FFF"], Vendas: ["#1E4FCC", "#22D3EE"], Mercado: ["#080A10", "#3D7FFF"] }[categoria] || ["#3D7FFF", "#22D3EE"];
+    var g = { Dicas: ["#8B5CFF", "#00E0FF"], Financiamento: ["#0B1B3A", "#8B5CFF"], Vendas: ["#4F7BFF", "#00E0FF"], Mercado: ["#080A10", "#8B5CFF"] }[categoria] || ["#8B5CFF", "#00E0FF"];
     var shape;
     if (categoria === "Financiamento") shape = '<circle cx="40" cy="66" r="16" fill="rgba(255,255,255,0.92)"/><circle cx="62" cy="52" r="16" fill="rgba(255,255,255,0.75)"/><circle cx="86" cy="66" r="16" fill="rgba(255,255,255,0.92)"/>';
     else if (categoria === "Vendas") shape = '<path d="M18 74 L40 54 L56 66 L96 24" stroke="rgba(255,255,255,0.95)" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M78 24 H96 V42" stroke="rgba(255,255,255,0.95)" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/>';
@@ -54,7 +54,7 @@
     return '<svg viewBox="0 0 120 100" width="100%" height="100%" preserveAspectRatio="xMidYMid slice" style="background:linear-gradient(135deg,' + g[0] + ',' + g[1] + ')">' + shape + '</svg>';
   }
   function customCoverSvg() {
-    return '<svg viewBox="0 0 120 100" width="100%" height="100%" preserveAspectRatio="xMidYMid slice" style="background:linear-gradient(135deg,#0B1B3A,#22D3EE)">' +
+    return '<svg viewBox="0 0 120 100" width="100%" height="100%" preserveAspectRatio="xMidYMid slice" style="background:linear-gradient(135deg,#0B1B3A,#00E0FF)">' +
       '<circle cx="60" cy="50" r="6" fill="rgba(255,255,255,0.95)"/>' +
       '<path d="M60 50L30 20M60 50L90 20M60 50L24 60M60 50L96 60M60 50L34 84M60 50L86 84" stroke="rgba(255,255,255,0.65)" stroke-width="4" stroke-linecap="round"/></svg>';
   }
@@ -344,20 +344,43 @@
     toastTimer = setTimeout(function () { el.classList.remove("show"); }, 2600);
   }
 
+  /* ---------------- fontes das postagens ---------------- */
+  // cada carrossel guarda a fonte escolhida (coluna carrosseis.fonte); o mesmo par vale pra prévia, JPEG e vídeo
+  var FONTES = {
+    moderna: { nome: "Moderna", titulo: '"Space Grotesk", sans-serif', tPeso: 700, corpo: '"Manrope", sans-serif' },
+    impacto: { nome: "Impacto", titulo: '"Anton", sans-serif', tPeso: 400, corpo: '"Manrope", sans-serif' },
+    elegante: { nome: "Elegante", titulo: '"Playfair Display", serif', tPeso: 800, corpo: '"Manrope", sans-serif' },
+    amigavel: { nome: "Amigável", titulo: '"Poppins", sans-serif', tPeso: 800, corpo: '"Poppins", sans-serif' },
+    futurista: { nome: "Futurista", titulo: '"Unbounded", sans-serif', tPeso: 700, corpo: '"Manrope", sans-serif' },
+    classica: { nome: "Clássica", titulo: '"Bricolage Grotesque", sans-serif', tPeso: 800, corpo: '"Plus Jakarta Sans", sans-serif' }
+  };
+  function fonteDe(id) { return FONTES[id] ? id : "moderna"; }
+  function fontPickerHtml(atual) {
+    return '<div class="fonts-titulo">Fonte do carrossel</div><div class="font-grid">' + Object.keys(FONTES).map(function (k) {
+      var f = FONTES[k];
+      return '<button type="button" class="font-opt' + (k === fonteDe(atual) ? " on" : "") + '" data-fonte="' + k + '">' +
+        '<span class="aa" style="font-family:' + f.titulo.replace(/"/g, "&quot;") + ';font-weight:' + f.tPeso + '">Aa</span><span class="nm">' + f.nome + '</span></button>';
+    }).join("") + '</div>';
+  }
+  async function carregarFonte(id) {
+    var f = FONTES[fonteDe(id)];
+    try { await Promise.all([document.fonts.load(f.tPeso + " 80px " + f.titulo), document.fonts.load("500 44px " + f.corpo), document.fonts.load("700 34px " + f.corpo)]); } catch (e) { }
+  }
+
   /* ---------------- slide tile renderer ---------------- */
-  function slideTile(slide, tplSlug, mini, index, total, art) {
+  function slideTile(slide, tplSlug, mini, index, total, art, fonte) {
     // imagem relacionada sempre por baixo do texto (fundo do slide inteiro), com o SVG/cor do template como fallback
     var foto = mini ? null : slideImageUrl(slide);
     var artHtml = foto ? '<div class="tile-bg">' + imgWithFallback(escapeHtml(foto), "") + '</div>' : "";
-    return '<div class="slide-tile ' + (mini ? "mini " : "") + (foto ? "has-bg " : "") + 'tpl-' + (tplSlug || "minimalista") + '">' + artHtml +
+    return '<div class="slide-tile fnt-' + fonteDe(fonte) + ' ' + (mini ? "mini " : "") + (foto ? "has-bg " : "") + 'tpl-' + (tplSlug || "minimalista") + '">' + artHtml +
       '<div class="stag">' + escapeHtml(slide.tag || "") + '</div>' +
       '<div class="stitle">' + escapeHtml(slide.titulo) + '</div>' +
       '<div class="sbody">' + escapeHtml(slide.corpo) + '</div>' +
       (mini ? "" : '<div class="sindex">' + index + "/" + total + "</div>") +
       "</div>";
   }
-  function slideStrip(slides, tplSlug, mini, art) {
-    return (slides || []).map(function (s, i) { return slideTile(s, tplSlug, mini, i + 1, slides.length, i === 0 ? art : null); }).join("");
+  function slideStrip(slides, tplSlug, mini, art, fonte) {
+    return (slides || []).map(function (s, i) { return slideTile(s, tplSlug, mini, i + 1, slides.length, i === 0 ? art : null, fonte); }).join("");
   }
 
 
@@ -366,9 +389,9 @@
   ============================================================ */
   var SLIDE_W = 1080, SLIDE_H = 1350;
   var SLIDE_THEMES = {
-    minimalista: { bg: ["#10131C", "#10131C"], ink: "#EEF0F6", tag: "#3D7FFF", border: "#242A38" },
-    vibrante: { bg: ["#3D7FFF", "#1E4FCC"], ink: "#FFFFFF", tag: "rgba(255,255,255,0.85)", border: "#3D7FFF" },
-    editorial: { bg: ["#080A10", "#0F1B33"], ink: "#EEF0F6", tag: "#22D3EE", border: "#22D3EE" }
+    minimalista: { bg: ["#0E1022", "#0E1022"], ink: "#F3F4FF", tag: "#A78BFF", border: "#252A50" },
+    vibrante: { bg: ["#8B5CFF", "#00B8E6"], ink: "#FFFFFF", tag: "rgba(255,255,255,0.9)", border: "#8B5CFF" },
+    editorial: { bg: ["#080A10", "#0F1B33"], ink: "#EEF0F6", tag: "#00E0FF", border: "#00E0FF" }
   };
 
   function loadImage(url) {
@@ -408,7 +431,7 @@
     return { size: size, lines: lines, height: lines.length * size * opts.lh };
   }
 
-  async function renderSlideJpeg(slide, i, total, tplSlug, bgImg, alto) {
+  async function renderSlideJpeg(slide, i, total, tplSlug, bgImg, alto, fonte) {
     var SLIDE_W = 1080, SLIDE_H = alto ? 1920 : 1350;   // alto = 9:16 (stories/reels)
     var th = SLIDE_THEMES[tplSlug] || SLIDE_THEMES.minimalista;
     var cv = document.createElement("canvas"); cv.width = SLIDE_W; cv.height = SLIDE_H;
@@ -428,10 +451,11 @@
       veil.addColorStop(0, "rgba(8,10,16,0.62)"); veil.addColorStop(0.45, "rgba(8,10,16,0.40)"); veil.addColorStop(1, "rgba(8,10,16,0.88)");
       ctx.fillStyle = veil; ctx.fillRect(0, 0, SLIDE_W, SLIDE_H);
       ink = "#FFFFFF";
-      if (tplSlug === "vibrante") tagColor = "#9CC0FF";
+      if (tplSlug === "vibrante") tagColor = "#7CF3FF";
     }
 
-    var family = '"Plus Jakarta Sans", sans-serif', display = '"Bricolage Grotesque", "Plus Jakarta Sans", sans-serif';
+    var F = FONTES[fonteDe(fonte)];
+    var family = F.corpo, display = F.titulo, tPeso = F.tPeso;
     ctx.textBaseline = "top";
     if (slide.tag) {
       ctx.fillStyle = tagColor; ctx.font = "700 34px " + family;
@@ -440,8 +464,8 @@
     }
     var bottomLimit = SLIDE_H - (alto ? 340 : pad) - 60;   // reserva espaço do contador (e da UI do stories/reels)
     var avail = bottomLimit - top;
-    var title = fitText(ctx, slide.titulo, { size: i === 0 ? 96 : 80, min: 44, weight: 800, family: display, maxW: SLIDE_W - pad * 2, maxH: avail * 0.55, lh: 1.08 });
-    ctx.fillStyle = ink; ctx.font = "800 " + title.size + "px " + display;
+    var title = fitText(ctx, slide.titulo, { size: i === 0 ? 96 : 80, min: 44, weight: tPeso, family: display, maxW: SLIDE_W - pad * 2, maxH: avail * 0.55, lh: 1.08 });
+    ctx.fillStyle = ink; ctx.font = tPeso + " " + title.size + "px " + display;
     title.lines.forEach(function (l, k) { ctx.fillText(l, pad, top + k * title.size * 1.08); });
 
     var bodyMaxH = avail - title.height - 48;
@@ -477,7 +501,7 @@
     var alto = formato === "stories" || formato === "reels";
     var tpl = findTemplateById(c.template_id);
     var slug = (tpl && tpl.slug) || "minimalista";
-    try { await Promise.all([document.fonts.load('800 80px "Bricolage Grotesque"'), document.fonts.load('500 44px "Plus Jakarta Sans"'), document.fonts.load('700 34px "Plus Jakarta Sans"')]); } catch (e) { }
+    await carregarFonte(c.fonte);
     try { await garantirFotosReais(c.slides, contextoDoCarrossel(c), true); }
     catch (e) { toast("Não consegui buscar as fotos: " + e.message); }
     var out = [];
@@ -485,7 +509,7 @@
       var sl = c.slides[i];
       if (onProgress) onProgress(i + 1, c.slides.length);
       var img = slideImageUrl(sl) ? await loadImage(slideImageUrl(sl)) : null;
-      var blob = await renderSlideJpeg(sl, i, c.slides.length, slug, img, alto);
+      var blob = await renderSlideJpeg(sl, i, c.slides.length, slug, img, alto, c.fonte);
       out.push({ blob: blob, url: URL.createObjectURL(blob) });
     }
     return out;
@@ -643,7 +667,8 @@
     var view = document.getElementById("auth-view");
     view.innerHTML =
       '<div class="auth-shell"><div class="auth-card">' +
-      '<div class="auth-brand"><div class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2.4"/><path d="M12 4v3.2M12 16.8V20M4 12h3.2M16.8 12H20M6.3 6.3l2.3 2.3M15.4 15.4l2.3 2.3M6.3 17.7l2.3-2.3M15.4 8.6l2.3-2.3"/></svg></div>' +
+      '<button type="button" class="auth-back" id="auth-back">← Conhecer a Vitrine</button>' +
+      '<div class="auth-brand"><div class="brand-mark"><svg viewBox="0 0 48 48" fill="none" aria-hidden="true"><defs><linearGradient id="vtg-auth" x1="6" y1="10" x2="40" y2="44" gradientUnits="userSpaceOnUse"><stop stop-color="#8B5CFF"/><stop offset="1" stop-color="#00E0FF"/></linearGradient></defs><path d="M7 15 L24 42 L41 15" stroke="url(#vtg-auth)" stroke-width="5.2" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 7.5 H40" stroke="#fff" stroke-width="5.2" stroke-linecap="round"/><path d="M24 7.5 V29" stroke="#fff" stroke-width="5.2" stroke-linecap="round"/><circle cx="24" cy="42" r="3.4" fill="#00E0FF"/></svg></div>' +
       '<div><div class="brand-name">Vitrine</div><div class="brand-sub" style="margin-top:0;">carrosséis para corretores</div></div></div>' +
       '<div class="auth-tabs">' +
       '<button type="button" class="auth-tab' + (authMode === "login" ? " active" : "") + '" data-authmode="login">Entrar</button>' +
@@ -660,6 +685,7 @@
       '<p style="text-align:center;font-size:11.5px;color:var(--ink-faint);margin:14px 0 0;">' + (authMode === "signup" ? "3 carrosséis grátis no teste, sem cartão." : "Ainda não tem conta? Use a aba \"Criar conta\".") + "</p>" +
       "</div></div>";
 
+    var back = qs("#auth-back", view); if (back) back.onclick = showLanding;
     qsa("[data-authmode]", view).forEach(function (b) {
       b.addEventListener("click", function () { authMode = b.dataset.authmode; renderAuthView(); });
     });
@@ -782,7 +808,7 @@
           : c.status === "publicado" ? "Publicado " + fmtDate(c.data_publicada)
           : "Criado " + fmtDate(c.created_at);
         return '<div class="ccard">' +
-          '<div class="thumb">' + slideTile(slide0, tpl && tpl.slug, true) + '</div>' +
+          '<div class="thumb">' + slideTile(slide0, tpl && tpl.slug, true, 1, 1, null, c.fonte) + '</div>' +
           '<div class="body">' +
           '<h4>' + escapeHtml(meta.titulo) + '</h4>' +
           '<div class="addr">' + escapeHtml(meta.sub) + '</div>' +
@@ -827,13 +853,21 @@
       '<div class="modal-head"><div><h3 style="font-size:19px;">' + escapeHtml(meta.titulo) + '</h3>' +
       '<span class="pill ' + pillCls + '" style="margin-top:6px;">' + c.status + '</span></div>' +
       '<button class="modal-close" id="modal-close">' + ICONS.close + '</button></div>' +
-      '<div class="carousel-strip">' + slideStrip(c.slides, tpl && tpl.slug, false, meta.art) + '</div>' +
+      '<div class="carousel-strip">' + slideStrip(c.slides, tpl && tpl.slug, false, meta.art, c.fonte) + '</div>' +
+      (c.status !== "publicado" ? '<div id="modal-fontes">' + fontPickerHtml(c.fonte) + '</div>' : "") +
       (c.status !== "publicado" ? '<div class="fotos-titulo">Fotos dos slides</div>' + fotoControlsHtml(c.slides) : "") +
       (c.direcionamento ? '<div style="font-size:12px;color:var(--ink-muted);margin-bottom:8px;"><strong>Direcionamento usado:</strong> ' + escapeHtml(c.direcionamento) + '</div>' : "") +
       '<div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">' +
       '<span style="font-size:12px;color:var(--ink-faint);">' + escapeHtml(meta.sub) + '</span>' + extra + '</div>';
     document.getElementById("overlay").hidden = false;
     document.getElementById("modal-close").addEventListener("click", closeModal);
+    qsa("#modal-fontes [data-fonte]").forEach(function (b) {
+      b.onclick = async function () {
+        c.fonte = b.dataset.fonte;
+        try { await DB.update("carrosseis", "id=eq." + c.id, { fonte: c.fonte }); } catch (e) { toast("Erro ao salvar a fonte: " + e.message); }
+        openCarouselModal(c.id); renderPainel();
+      };
+    });
     if (c.status !== "publicado") wireFotoControls(document.getElementById("modal-body"), c.slides, contextoDoCarrossel(c), true, function () { openCarouselModal(c.id); });
     // carrossel antigo sem foto: busca as fotos reais uma vez e redesenha
     if (!c._buscouFotos && c.slides.some(function (s) { return !isFotoReal(s.imagem_url); })) {
@@ -962,7 +996,7 @@
      WIZARD
   ============================================================ */
   function freshWizard() {
-    return { step: 1, subjectMode: "topic", propertyId: null, topicId: null, customTopic: "", customCategoria: "Dicas", slides: null, templateSlug: "minimalista", dest: "rascunho", customPrompt: "" };
+    return { step: 1, subjectMode: "topic", propertyId: null, topicId: null, customTopic: "", customCategoria: "Dicas", slides: null, templateSlug: "minimalista", fonte: "moderna", dest: "rascunho", customPrompt: "" };
   }
   var wizard = freshWizard();
   function resetWizard() { wizard = freshWizard(); }
@@ -1184,7 +1218,7 @@
     var promptEl = document.getElementById("custom-prompt");
     if (promptEl) wizard.customPrompt = promptEl.value;
     area.innerHTML = subjectSpotlightHtml() + promptBoxHtml() +
-      '<div class="gen-empty"><div class="wand"><div class="spin" style="border-top-color:var(--accent); border-color:rgba(61,127,255,0.25);"></div></div>' +
+      '<div class="gen-empty"><div class="wand"><div class="spin" style="border-top-color:var(--accent); border-color:rgba(139,92,255,0.25);"></div></div>' +
       '<p>Gerando texto com IA (Claude)' + (wizard.customPrompt ? " a partir do seu direcionamento" : "") + '…</p></div>';
     try {
       var origem = wizard.subjectMode === "property" ? "imovel" : wizard.subjectMode === "topic" ? "topico" : "custom";
@@ -1215,7 +1249,11 @@
       el.addEventListener("click", function () { wizard.templateSlug = el.dataset.tpl; renderTplStep(); });
     });
     var strip = document.getElementById("preview-strip");
-    strip.innerHTML = slideStrip(wizard.slides || [], wizard.templateSlug, false, wizardArt());
+    strip.innerHTML = slideStrip(wizard.slides || [], wizard.templateSlug, false, wizardArt(), wizard.fonte);
+    var fbox = document.getElementById("wiz-fontes");
+    if (!fbox) { fbox = document.createElement("div"); fbox.id = "wiz-fontes"; strip.insertAdjacentElement("beforebegin", fbox); }
+    fbox.innerHTML = fontPickerHtml(wizard.fonte);
+    qsa("[data-fonte]", fbox).forEach(function (b) { b.onclick = function () { wizard.fonte = b.dataset.fonte; renderTplStep(); }; });
     var box = document.getElementById("wiz-fotos");
     if (!box) { box = document.createElement("div"); box.id = "wiz-fotos"; strip.insertAdjacentElement("afterend", box); }
     if (wizard.slides && wizard.slides.length) {
@@ -1267,6 +1305,7 @@
       corretor_id: state.profile.id,
       origem: origem,
       template_id: tpl ? tpl.id : null,
+      fonte: fonteDe(wizard.fonte),
       direcionamento: wizard.customPrompt || null,
       status: wizard.dest,
       propriedade_id: origem === "imovel" ? wizard.propertyId : null,
@@ -1434,7 +1473,7 @@
       var tpl = findTemplateById(c.template_id);
       var slide0 = (c.slides && c.slides[0]) || { tag: "", titulo: meta.titulo, corpo: "" };
       var when = label === "Publica em" ? fmtDateTime(c.data_agendada) : fmtDate(c.data_publicada);
-      return '<div class="qitem"><div class="thumb">' + slideTile(slide0, tpl && tpl.slug, true) + '</div>' +
+      return '<div class="qitem"><div class="thumb">' + slideTile(slide0, tpl && tpl.slug, true, 1, 1, null, c.fonte) + '</div>' +
         '<div class="body"><h4>' + escapeHtml(meta.titulo) + '</h4><div class="when">' + label + ' ' + when + '</div></div></div>';
     }
   }
@@ -1621,7 +1660,27 @@
     }
   }
 
+  // visitante sem login vê a página de captação; os botões abrem o cadastro (teste grátis) ou o login
+  var landingWired = false;
+  function showLanding() {
+    document.getElementById("auth-view").hidden = true;
+    document.getElementById("landing-view").hidden = false;
+    if (!landingWired) {
+      landingWired = true;
+      qsa("#landing-view [data-cta]").forEach(function (b) { b.addEventListener("click", function () { openAuth(b.dataset.cta); }); });
+    }
+    window.scrollTo(0, 0); document.body.scrollTop = 0; document.documentElement.scrollTop = 0;
+  }
+  function openAuth(mode) {
+    authMode = mode === "login" ? "login" : "signup";
+    document.getElementById("landing-view").hidden = true;
+    document.getElementById("auth-view").hidden = false;
+    renderAuthView();
+    window.scrollTo(0, 0); document.body.scrollTop = 0; document.documentElement.scrollTop = 0;
+  }
+
   async function bootApp() {
+    document.getElementById("landing-view").hidden = true;
     var loading = document.getElementById("loading-shell");
     var authView = document.getElementById("auth-view");
     var appView = document.getElementById("app-view");
@@ -1630,9 +1689,9 @@
     var session = Auth.load();
     if (!session) {
       loading.hidden = true;
-      authMode = "login";
-      authView.hidden = false;
-      renderAuthView();
+      if (/entrar|login/.test(location.hash)) openAuth("login");
+      else if (/teste|cadastro/.test(location.hash)) openAuth("signup");
+      else showLanding();
       return;
     }
     try {

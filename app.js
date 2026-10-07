@@ -347,7 +347,7 @@
   /* ---------------- promoção de lançamento ---------------- */
   // 30% off no 1º mês do plano mensal até 31/10/2026 23:59 (Fortaleza). O desconto real é aplicado no servidor (stripe-checkout).
   var PROMO_FIM = new Date("2026-10-31T23:59:59-03:00");
-  var SUPORTE_EMAIL = "suporte.vitrinecorretores@gmail.com";
+  var SUPORTE_EMAIL = "vitrinecorretor@gmail.com";
   function promoAtiva() { return Date.now() < PROMO_FIM.getTime(); }
   function iniciarContadoresPromo() {
     function tick() {

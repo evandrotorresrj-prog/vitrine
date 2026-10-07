@@ -1,4 +1,6 @@
-// POST (logado) { contexto?: string, slides: [{ titulo, corpo }] } → { imagens: [{ url, credito, link } | null] }
+// POST (logado) { contexto?, slides: [{ titulo, corpo }], termos?: string[], excluir?: string[] }
+//   → { imagens: [{ url, credito, link } | null] }
+// termos  = busca escolhida pelo corretor (pula a IA); excluir = URLs de fotos que ele já viu (pra "trocar foto")
 // Busca FOTOS REAIS em alta resolução em bancos de fotos profissionais com licença livre pra uso comercial:
 // Unsplash (principal) e Pexels (reserva, se houver chave). Guardamos o nome do fotógrafo como crédito.
 // A IA (Claude) só escolhe as palavras de busca de cada slide.
@@ -91,6 +93,8 @@ Responda SÓ com um array JSON de strings, na mesma ordem dos slides.`,
   return fallback;
 }
 
+const base = (u: string) => (u || "").split("?")[0];
+
 async function buscarUnsplash(q: string, usados: Set<string>) {
   const u = new URL("https://api.unsplash.com/search/photos");
   u.searchParams.set("query", q);
@@ -101,7 +105,7 @@ async function buscarUnsplash(q: string, usados: Set<string>) {
   if (!r.ok) throw new HttpError(502, "Banco de fotos indisponível (" + r.status + ").");
   const d = await r.json();
   // deno-lint-ignore no-explicit-any
-  const foto = (d.results ?? []).find((p: any) => !usados.has("u" + p.id) && p.width >= 1080);
+  const foto = (d.results ?? []).find((p: any) => !usados.has("u" + p.id) && !usados.has(base(p.urls.raw)) && p.width >= 1080);
   if (!foto) return null;
   usados.add("u" + foto.id);
   // regra da API do Unsplash: avisar o "download" quando a foto é escolhida pra uso
@@ -110,7 +114,8 @@ async function buscarUnsplash(q: string, usados: Set<string>) {
   return {
     url: `${foto.urls.raw}&w=1080&h=1350&fit=crop&crop=entropy&q=85&fm=jpg`,
     credito: `Foto: ${foto.user?.name ?? "Unsplash"} / Unsplash`,
-    link: foto.links.html,
+    // regra de atribuição do Unsplash: link pro perfil do fotógrafo com utm do app
+    link: `${foto.user?.links?.html ?? "https://unsplash.com"}?utm_source=vitrine&utm_medium=referral`,
   };
 }
 
@@ -132,7 +137,7 @@ async function buscarPexels(q: string, usados: Set<string>) {
   if (!r.ok) throw new HttpError(502, "Banco de fotos indisponível (" + r.status + ").");
   const d = await r.json();
   // deno-lint-ignore no-explicit-any
-  const foto = (d.photos ?? []).find((p: any) => !usados.has("p" + p.id) && p.width >= 1080);
+  const foto = (d.photos ?? []).find((p: any) => !usados.has("p" + p.id) && !usados.has(base(p.src.original)) && p.width >= 1080);
   if (!foto) return null;
   usados.add("p" + foto.id);
   // "large2x" = ~1880px de largura, comprimida pra web; recortamos 4:5 no app
@@ -142,11 +147,13 @@ async function buscarPexels(q: string, usados: Set<string>) {
 Deno.serve(handle(async (req) => {
   await requireUser(req);
   if (!UNSPLASH && !PEXELS) throw new HttpError(500, "Chave do banco de fotos (UNSPLASH_ACCESS_KEY) não configurada no servidor.");
-  const { contexto = "", slides } = await req.json();
+  const { contexto = "", slides, termos: termosDoCorretor, excluir = [] } = await req.json();
   if (!Array.isArray(slides) || !slides.length || slides.length > 10) throw new HttpError(400, "Envie de 1 a 10 slides.");
 
-  const termos = await termosDeBusca(String(contexto), slides);
-  const usados = new Set<string>();
+  const termos: string[] = Array.isArray(termosDoCorretor) && termosDoCorretor.length === slides.length
+    ? termosDoCorretor.map((t: unknown) => String(t).slice(0, 80))
+    : await termosDeBusca(String(contexto), slides);
+  const usados = new Set<string>((Array.isArray(excluir) ? excluir : []).map((u: unknown) => base(String(u))));
   const imagens = [];
   for (const q of termos) {
     let foto = await buscarFoto(q, usados);

@@ -353,11 +353,18 @@
   }
 
   /* ---------------- promoção de lançamento ---------------- */
-  // 30% off no 1º mês do plano mensal — oferta-relâmpago de 24h, até 08/10/2026 20:00 (Fortaleza). O desconto real é aplicado no servidor (stripe-checkout).
-  var PROMO_FIM = new Date("2026-10-08T20:00:00-03:00");
+  // 30% off no 1º mês do plano mensal para NOVOS assinantes — desconto fixo, sem prazo nem contagem regressiva
+  // (escolha do dono: nada de "acaba hoje" falso). O desconto real é aplicado no servidor (stripe-checkout).
+  // Pra fazer uma rodada com prazo de verdade no futuro, é só colocar uma data aqui (e a mesma no stripe-checkout).
+  var PROMO_FIM = null;
   var SUPORTE_EMAIL = "vitrinecorretor@gmail.com";
-  function promoAtiva() { return Date.now() < PROMO_FIM.getTime(); }
+  function promoAtiva() { return !PROMO_FIM || Date.now() < PROMO_FIM.getTime(); }
   function iniciarContadoresPromo() {
+    if (!PROMO_FIM) {   // desconto fixo: mostra a oferta, sem relógio
+      qsa("[data-promo]").forEach(function (el) { el.hidden = false; });
+      qsa("[data-countdown]").forEach(function (el) { el.hidden = true; });
+      return;
+    }
     function tick() {
       var ms = PROMO_FIM.getTime() - Date.now();
       qsa("[data-promo]").forEach(function (el) { el.hidden = ms <= 0; });
@@ -1736,7 +1743,7 @@
       });
     }
 
-    var promoHtml = promoAtiva() ? '<div class="promo-plano" style="grid-column:1/-1;"><b>Oferta de lançamento:</b> 30% off no 1º mês do plano mensal — só por 24 horas (até 08/10 às 20h). <span class="promo-cd" data-countdown></span></div>' : "";
+    var promoHtml = promoAtiva() ? '<div class="promo-plano" style="grid-column:1/-1;"><b>Oferta para novos assinantes:</b> 30% off no 1º mês do plano mensal, aplicado automaticamente no pagamento.</div>' : "";
     document.getElementById("plan-grid").innerHTML = promoHtml +
       '<div class="toggle-period" style="grid-column:1/-1;">' +
       '<button data-period="mensal" class="' + (planPeriod === "mensal" ? "active" : "") + '">Mensal</button>' +

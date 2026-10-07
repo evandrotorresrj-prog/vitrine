@@ -32,10 +32,13 @@ Deno.serve(handle(async (req) => {
   const valor = Number(periodo === "anual" ? plano.preco_anual : plano.preco_mensal);
   const meta = { corretor_id: uid, plano_id: String(plano.id), periodo };
 
-  // Oferta de lançamento: 30% off só no 1º mês do plano mensal, oferta de 24h até 08/10/2026 20:00 (horário de Fortaleza)
-  const PROMO_FIM = Date.parse("2026-10-08T20:00:00-03:00");
+  // Oferta fixa: 30% off só no 1º mês do plano mensal, só na PRIMEIRA assinatura do corretor
+  // (quem já assinou antes e cancelou não ganha de novo). Sem prazo. Pra uma rodada com prazo, coloque uma data em PROMO_FIM.
+  const PROMO_FIM: number | null = null;
+  const { count: assinaturasAntes } = await db.from("assinaturas").select("id", { count: "exact", head: true })
+    .eq("corretor_id", uid).not("stripe_subscription_id", "is", null);
   let discounts: { coupon: string }[] | undefined;
-  if (periodo === "mensal" && Date.now() < PROMO_FIM) {
+  if (periodo === "mensal" && (assinaturasAntes ?? 0) === 0 && (PROMO_FIM === null || Date.now() < PROMO_FIM)) {
     const COUPON = "LANCAMENTO30";
     try { await stripe.coupons.retrieve(COUPON); }
     catch { await stripe.coupons.create({ id: COUPON, percent_off: 30, duration: "once", name: "Lançamento 30% off no 1º mês" }); }

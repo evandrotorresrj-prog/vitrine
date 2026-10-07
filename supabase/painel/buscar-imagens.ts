@@ -1,7 +1,8 @@
 // POST (logado) { contexto?: string, slides: [{ titulo, corpo }] } → { imagens: [{ url, credito, link } | null] }
-// Busca FOTOS REAIS em alta resolução (Pexels — licença livre pra uso comercial, sem precisar dar crédito,
-// mas guardamos o nome do fotógrafo mesmo assim). A IA (Claude) só escolhe as palavras de busca de cada slide.
-// Secrets: PEXELS_API_KEY (grátis em pexels.com/api), ANTHROPIC_API_KEY (já existe)
+// Busca FOTOS REAIS em alta resolução em bancos de fotos profissionais com licença livre pra uso comercial:
+// Unsplash (principal) e Pexels (reserva, se houver chave). Guardamos o nome do fotógrafo como crédito.
+// A IA (Claude) só escolhe as palavras de busca de cada slide.
+// Secrets: UNSPLASH_ACCESS_KEY (grátis em unsplash.com/developers) e/ou PEXELS_API_KEY; ANTHROPIC_API_KEY (já existe)
 import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2";
 
 // ---- utilitários (copiados de _shared/util.ts) ----
@@ -51,6 +52,7 @@ function handle(fn: (req: Request) => Promise<Response>) {
 // ---- fim dos utilitários ----
 
 
+const UNSPLASH = Deno.env.get("UNSPLASH_ACCESS_KEY");
 const PEXELS = Deno.env.get("PEXELS_API_KEY");
 const ANTHROPIC = Deno.env.get("ANTHROPIC_API_KEY");
 
@@ -89,7 +91,38 @@ Responda SÓ com um array JSON de strings, na mesma ordem dos slides.`,
   return fallback;
 }
 
-async function buscarFoto(q: string, usados: Set<number>) {
+async function buscarUnsplash(q: string, usados: Set<string>) {
+  const u = new URL("https://api.unsplash.com/search/photos");
+  u.searchParams.set("query", q);
+  u.searchParams.set("orientation", "portrait");
+  u.searchParams.set("content_filter", "high");
+  u.searchParams.set("per_page", "10");
+  const r = await fetch(u, { headers: { Authorization: `Client-ID ${UNSPLASH}`, "Accept-Version": "v1" } });
+  if (!r.ok) throw new HttpError(502, "Banco de fotos indisponível (" + r.status + ").");
+  const d = await r.json();
+  // deno-lint-ignore no-explicit-any
+  const foto = (d.results ?? []).find((p: any) => !usados.has("u" + p.id) && p.width >= 1080);
+  if (!foto) return null;
+  usados.add("u" + foto.id);
+  // regra da API do Unsplash: avisar o "download" quando a foto é escolhida pra uso
+  fetch(foto.links.download_location, { headers: { Authorization: `Client-ID ${UNSPLASH}` } }).catch(() => {});
+  // já recortada em 4:5 e 1080x1350 (alta resolução, tamanho exato do Instagram) pela CDN do Unsplash
+  return {
+    url: `${foto.urls.raw}&w=1080&h=1350&fit=crop&crop=entropy&q=85&fm=jpg`,
+    credito: `Foto: ${foto.user?.name ?? "Unsplash"} / Unsplash`,
+    link: foto.links.html,
+  };
+}
+
+async function buscarFoto(q: string, usados: Set<string>) {
+  if (UNSPLASH) {
+    const f = await buscarUnsplash(q, usados);
+    if (f || !PEXELS) return f;
+  }
+  return await buscarPexels(q, usados);
+}
+
+async function buscarPexels(q: string, usados: Set<string>) {
   const u = new URL("https://api.pexels.com/v1/search");
   u.searchParams.set("query", q);
   u.searchParams.set("orientation", "portrait");
@@ -99,21 +132,21 @@ async function buscarFoto(q: string, usados: Set<number>) {
   if (!r.ok) throw new HttpError(502, "Banco de fotos indisponível (" + r.status + ").");
   const d = await r.json();
   // deno-lint-ignore no-explicit-any
-  const foto = (d.photos ?? []).find((p: any) => !usados.has(p.id) && p.width >= 1080);
+  const foto = (d.photos ?? []).find((p: any) => !usados.has("p" + p.id) && p.width >= 1080);
   if (!foto) return null;
-  usados.add(foto.id);
+  usados.add("p" + foto.id);
   // "large2x" = ~1880px de largura, comprimida pra web; recortamos 4:5 no app
   return { url: foto.src.large2x || foto.src.original, credito: `Foto: ${foto.photographer} / Pexels`, link: foto.url };
 }
 
 Deno.serve(handle(async (req) => {
   await requireUser(req);
-  if (!PEXELS) throw new HttpError(500, "PEXELS_API_KEY não configurada no servidor.");
+  if (!UNSPLASH && !PEXELS) throw new HttpError(500, "Chave do banco de fotos (UNSPLASH_ACCESS_KEY) não configurada no servidor.");
   const { contexto = "", slides } = await req.json();
   if (!Array.isArray(slides) || !slides.length || slides.length > 10) throw new HttpError(400, "Envie de 1 a 10 slides.");
 
   const termos = await termosDeBusca(String(contexto), slides);
-  const usados = new Set<number>();
+  const usados = new Set<string>();
   const imagens = [];
   for (const q of termos) {
     let foto = await buscarFoto(q, usados);

@@ -779,8 +779,12 @@
     imoveis: ["Meus imóveis", "Os imóveis disponíveis para virar carrossel."],
     novo: ["Novo carrossel", "IA gera o conteúdo, você ajusta o estilo e agenda."],
     instagram: ["Instagram", "Conexão e fila de publicação."],
-    plano: ["Plano", "Seu teste grátis e sua assinatura da Vitrine."]
+    plano: ["Plano", "Seu teste grátis e sua assinatura da Vitrine."],
+    admin: ["Admin", "Contas cadastradas na plataforma (visível só pra você)."]
   };
+  // quem vê o menu Admin (o servidor também confere — sem isso ele devolve 403)
+  var ADMIN_IDS = ["f13c2703-8848-485a-ae60-97e139a2b0a6"];
+  function ehAdmin() { return !!(state.profile && ADMIN_IDS.indexOf(state.profile.id) >= 0); }
 
   function showScreen(name) {
     qsa(".screen").forEach(function (s) { s.hidden = true; });
@@ -792,7 +796,66 @@
     if (name === "imoveis") renderImoveis();
     if (name === "instagram") renderInstagram();
     if (name === "plano") renderPlano();
+    if (name === "admin") renderAdmin();
     if (name === "novo" && wizard.step === 1) renderWizard();
+  }
+
+  /* ---------------- ADMIN ---------------- */
+  var adminDados = null;
+  async function renderAdmin(forcar) {
+    var tab = document.getElementById("admin-tabela");
+    if (!adminDados || forcar) {
+      tab.innerHTML = '<tr><td style="padding:24px;color:var(--ink-muted);">Carregando contas…</td></tr>';
+      try { adminDados = await callFunction("admin-painel", {}); }
+      catch (e) { tab.innerHTML = '<tr><td style="padding:24px;color:#ff9aab;">' + escapeHtml(e.message) + '</td></tr>'; return; }
+    }
+    var r = adminDados.resumo;
+    document.getElementById("admin-resumo").innerHTML = [
+      ["Contas", r.contas, r.novas_7_dias + " novas nos últimos 7 dias"],
+      ["Assinantes ativos", r.assinantes_ativos, "pagando"],
+      ["Em teste grátis", r.em_teste, "podem virar assinantes"],
+      ["Receita mensal", "R$ " + Number(r.receita_mensal_estimada).toFixed(2).replace(".", ","), r.carrosseis + " carrosséis criados"]
+    ].map(function (s) { return '<div class="stat" style="cursor:default;"><div class="n">' + escapeHtml(s[1]) + '</div><div class="l">' + escapeHtml(s[0]) + '</div><div class="sub" style="font-size:11.5px;color:var(--ink-faint);margin-top:4px;">' + escapeHtml(s[2]) + '</div></div>'; }).join("");
+    desenharTabelaAdmin();
+    var busca = document.getElementById("admin-busca");
+    busca.oninput = desenharTabelaAdmin;
+    document.getElementById("admin-atualizar").onclick = function () { renderAdmin(true); };
+    document.getElementById("admin-csv").onclick = baixarCsvAdmin;
+  }
+  function contasFiltradas() {
+    var q = (document.getElementById("admin-busca").value || "").toLowerCase().trim();
+    return (adminDados ? adminDados.contas : []).filter(function (c) {
+      return !q || [c.nome, c.email, c.cidade, c.telefone, c.instagram].join(" ").toLowerCase().indexOf(q) >= 0;
+    });
+  }
+  function desenharTabelaAdmin() {
+    var linhas = contasFiltradas();
+    var pill = function (c) {
+      var cls = c.status === "ativa" ? "ativa" : c.status === "trial" ? "trial" : "outro";
+      var txt = c.status === "ativa" ? (c.plano || "Assinante") + (c.periodo ? " · " + c.periodo : "") : c.status === "trial" ? "Teste grátis" : c.status;
+      return '<span class="adm-pill ' + cls + '">' + escapeHtml(txt) + '</span>';
+    };
+    document.getElementById("admin-tabela").innerHTML =
+      '<thead><tr><th>Corretor</th><th>Contato</th><th>Plano</th><th>Uso</th><th>Instagram</th><th>Cadastro</th><th>Último acesso</th></tr></thead><tbody>' +
+      (linhas.length ? linhas.map(function (c) {
+        return '<tr><td><b>' + escapeHtml(c.nome || "—") + '</b><div class="sub">' + escapeHtml(c.cidade || "") + (c.creci ? " · CRECI " + escapeHtml(c.creci) : "") + '</div></td>' +
+          '<td>' + escapeHtml(c.email) + (c.email_confirmado ? "" : ' <span class="sub">(e-mail não confirmado)</span>') + '<div class="sub">' + escapeHtml(c.telefone || "") + '</div></td>' +
+          '<td>' + pill(c) + (c.fim && c.status === "ativa" ? '<div class="sub">renova ' + fmtDate(c.fim) + '</div>' : "") + '</td>' +
+          '<td>' + c.carrosseis + ' carrossel' + (c.carrosseis === 1 ? "" : "éis") + '<div class="sub">' + c.publicados + ' publicado' + (c.publicados === 1 ? "" : "s") + (c.status === "trial" ? " · teste " + c.trial_usado + "/" + c.trial_limite : "") + '</div></td>' +
+          '<td>' + (c.instagram ? escapeHtml(c.instagram) : '<span class="sub">não conectado</span>') + '</td>' +
+          '<td>' + fmtDate(c.cadastrado_em) + '</td>' +
+          '<td>' + (c.ultimo_login ? fmtDateTime(c.ultimo_login) : '<span class="sub">nunca</span>') + '</td></tr>';
+      }).join("") : '<tr><td colspan="7" style="padding:24px;color:var(--ink-muted);">Nenhuma conta encontrada.</td></tr>') + '</tbody>';
+  }
+  function baixarCsvAdmin() {
+    var cols = ["nome", "email", "telefone", "cidade", "creci", "status", "plano", "periodo", "carrosseis", "publicados", "instagram", "cadastrado_em", "ultimo_login"];
+    var esc = function (v) { v = v == null ? "" : String(v); if (/^[=+\-@]/.test(v)) v = "'" + v; return '"' + v.replace(/"/g, '""') + '"'; };
+    var csv = [cols.join(";")].concat(contasFiltradas().map(function (c) { return cols.map(function (k) { return esc(c[k]); }).join(";"); })).join("\r\n");
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" }));
+    a.download = "vitrine-contas-" + new Date().toISOString().slice(0, 10) + ".csv";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
   }
 
   function trialBlocked() {
@@ -1947,6 +2010,7 @@
       document.getElementById("sidebar-name").textContent = state.profile.nome || state.profile.email;
       document.getElementById("workspace-name").textContent = state.profile.nome ? state.profile.nome + " · Vitrine" : "Vitrine";
 
+      document.getElementById("nav-admin").hidden = !ehAdmin();
       if (!navWired) { wireNav(); navWired = true; }
       updateNavPlanBadge();
       resetWizard();

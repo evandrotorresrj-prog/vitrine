@@ -66,9 +66,37 @@
     window.__vitrineFallback[id] = fallbackSvg;
     return '<img src="' + url + '" alt="" loading="lazy" onerror="var h=window.__vitrineFallback[\'' + id + '\']; if(h){ this.outerHTML = h; }">';
   }
-  function pollinationsUrl(prompt) {
-    return "https://image.pollinations.ai/prompt/" + encodeURIComponent(prompt) + "?width=480&height=600&nologo=true";
+  function pollinationsUrl(prompt, w, h) {
+    return "https://image.pollinations.ai/prompt/" + encodeURIComponent(prompt) + "?width=" + (w || 480) + "&height=" + (h || 600) + "&nologo=true";
   }
+  // foto REAL de fundo de cada slide (banco de fotos Pexels, alta resolução) — nunca imagem gerada por IA.
+  function isFotoReal(url) { return !!url && !/pollinations\.ai/.test(url); }
+  function slideImageUrl(slide) { return isFotoReal(slide.imagem_url) ? slide.imagem_url : null; }
+
+  // busca no servidor fotos reais pros slides que ainda não têm; grava no próprio objeto (e no banco, se já salvos)
+  async function garantirFotosReais(slides, contexto, salvarNoBanco) {
+    var faltando = slides.map(function (s, i) { return { s: s, i: i }; }).filter(function (x) { return !isFotoReal(x.s.imagem_url); });
+    if (!faltando.length) return;
+    var resp = await callFunction("buscar-imagens", {
+      contexto: contexto || "",
+      slides: faltando.map(function (x) { return { titulo: x.s.titulo, corpo: x.s.corpo }; })
+    });
+    for (var k = 0; k < faltando.length; k++) {
+      var foto = (resp.imagens || [])[k];
+      if (!foto) continue;
+      faltando[k].s.imagem_url = foto.url;
+      faltando[k].s.imagem_prompt = foto.credito;   // guarda o crédito do fotógrafo
+      if (salvarNoBanco && faltando[k].s.id) {
+        try { await DB.update("slides", "id=eq." + faltando[k].s.id, { imagem_url: foto.url, imagem_prompt: foto.credito }); } catch (e) { }
+      }
+    }
+  }
+  function contextoDoCarrossel(c) {
+    if (c.origem === "imovel") { var p = findProp(c.propriedade_id); return p ? (p.tipo || "imóvel") + " em " + (p.bairro || "") + ", " + (p.cidade || "") : ""; }
+    if (c.origem === "topico") { var t = findTopic(c.topico_id); return t ? "mercado imobiliário, " + t.categoria + ": " + t.gancho : ""; }
+    return "mercado imobiliário, " + (c.categoria || "") + ": " + (c.assunto_custom || "");
+  }
+
   function aiCoverImg(prompt, fallbackSvg) {
     return imgWithFallback(pollinationsUrl(prompt), fallbackSvg);
   }
@@ -235,7 +263,7 @@
     // imagem_url passa por escapeHtml() porque é um valor gravado no banco (RLS permite o dono escrever nos próprios
     // slides) e vai direto num atributo HTML — sem isso, um valor malicioso ali quebraria o atributo (XSS).
     var capa = c.slides && c.slides[0];
-    if (capa && capa.imagem_url) meta.art = imgWithFallback(escapeHtml(capa.imagem_url), meta.art);
+    if (capa && isFotoReal(capa.imagem_url)) meta.art = imgWithFallback(escapeHtml(capa.imagem_url), meta.art);
     return meta;
   }
 
@@ -252,8 +280,10 @@
 
   /* ---------------- slide tile renderer ---------------- */
   function slideTile(slide, tplSlug, mini, index, total, art) {
-    var artHtml = (!mini && art) ? '<div class="tile-art">' + art + '</div>' : "";
-    return '<div class="slide-tile ' + (mini ? "mini " : "") + 'tpl-' + (tplSlug || "minimalista") + '">' + artHtml +
+    // imagem relacionada sempre por baixo do texto (fundo do slide inteiro), com o SVG/cor do template como fallback
+    var foto = mini ? null : slideImageUrl(slide);
+    var artHtml = foto ? '<div class="tile-bg">' + imgWithFallback(escapeHtml(foto), "") + '</div>' : "";
+    return '<div class="slide-tile ' + (mini ? "mini " : "") + (foto ? "has-bg " : "") + 'tpl-' + (tplSlug || "minimalista") + '">' + artHtml +
       '<div class="stag">' + escapeHtml(slide.tag || "") + '</div>' +
       '<div class="stitle">' + escapeHtml(slide.titulo) + '</div>' +
       '<div class="sbody">' + escapeHtml(slide.corpo) + '</div>' +
@@ -312,7 +342,7 @@
     return { size: size, lines: lines, height: lines.length * size * opts.lh };
   }
 
-  async function renderSlideJpeg(slide, i, total, tplSlug, coverImg) {
+  async function renderSlideJpeg(slide, i, total, tplSlug, bgImg) {
     var th = SLIDE_THEMES[tplSlug] || SLIDE_THEMES.minimalista;
     var cv = document.createElement("canvas"); cv.width = SLIDE_W; cv.height = SLIDE_H;
     var ctx = cv.getContext("2d");
@@ -321,25 +351,30 @@
     ctx.fillStyle = g; ctx.fillRect(0, 0, SLIDE_W, SLIDE_H);
 
     var pad = 96, top = pad;
-    if (i === 0 && coverImg) {
-      // capa: foto no topo (38% da altura), recortada tipo object-fit:cover
-      var ah = Math.round(SLIDE_H * 0.38), r = Math.max(SLIDE_W / coverImg.width, ah / coverImg.height);
-      var sw = SLIDE_W / r, sh = ah / r;
-      ctx.drawImage(coverImg, (coverImg.width - sw) / 2, (coverImg.height - sh) / 2, sw, sh, 0, 0, SLIDE_W, ah);
-      top = ah + 64;
+    var ink = th.ink, tagColor = th.tag;
+    if (bgImg) {
+      // foto relacionada ocupando o slide inteiro (object-fit:cover) + véu escuro pro texto ficar legível
+      var r = Math.max(SLIDE_W / bgImg.width, SLIDE_H / bgImg.height);
+      var sw = SLIDE_W / r, sh = SLIDE_H / r;
+      ctx.drawImage(bgImg, (bgImg.width - sw) / 2, (bgImg.height - sh) / 2, sw, sh, 0, 0, SLIDE_W, SLIDE_H);
+      var veil = ctx.createLinearGradient(0, 0, 0, SLIDE_H);
+      veil.addColorStop(0, "rgba(8,10,16,0.62)"); veil.addColorStop(0.45, "rgba(8,10,16,0.40)"); veil.addColorStop(1, "rgba(8,10,16,0.88)");
+      ctx.fillStyle = veil; ctx.fillRect(0, 0, SLIDE_W, SLIDE_H);
+      ink = "#FFFFFF";
+      if (tplSlug === "vibrante") tagColor = "#9CC0FF";
     }
 
     var family = '"Plus Jakarta Sans", sans-serif', display = '"Bricolage Grotesque", "Plus Jakarta Sans", sans-serif';
     ctx.textBaseline = "top";
     if (slide.tag) {
-      ctx.fillStyle = th.tag; ctx.font = "700 34px " + family;
+      ctx.fillStyle = tagColor; ctx.font = "700 34px " + family;
       ctx.fillText(String(slide.tag).toUpperCase(), pad, top);
       top += 64;
     }
     var bottomLimit = SLIDE_H - pad - 60;          // reserva espaço do contador
     var avail = bottomLimit - top;
     var title = fitText(ctx, slide.titulo, { size: i === 0 ? 96 : 80, min: 44, weight: 800, family: display, maxW: SLIDE_W - pad * 2, maxH: avail * 0.55, lh: 1.08 });
-    ctx.fillStyle = th.ink; ctx.font = "800 " + title.size + "px " + display;
+    ctx.fillStyle = ink; ctx.font = "800 " + title.size + "px " + display;
     title.lines.forEach(function (l, k) { ctx.fillText(l, pad, top + k * title.size * 1.08); });
 
     var bodyMaxH = avail - title.height - 48;
@@ -369,22 +404,80 @@
     return SUPABASE_URL + "/storage/v1/object/public/slides-render/" + path;
   }
 
-  // gera os JPEGs de todos os slides, sobe no Storage e grava render_url em cada slide
-  async function renderCarouselImages(c, onProgress) {
+  // gera os JPEGs de todos os slides em memória (ainda não sobe nada)
+  async function renderCarouselBlobs(c, onProgress) {
     var tpl = findTemplateById(c.template_id);
     var slug = (tpl && tpl.slug) || "minimalista";
     try { await Promise.all([document.fonts.load('800 80px "Bricolage Grotesque"'), document.fonts.load('500 44px "Plus Jakarta Sans"'), document.fonts.load('700 34px "Plus Jakarta Sans"')]); } catch (e) { }
-    var capa = c.slides[0] && c.slides[0].imagem_url;
-    var coverImg = capa ? await loadImage(capa) : null;
-    var stamp = Date.now();
+    try { await garantirFotosReais(c.slides, contextoDoCarrossel(c), true); }
+    catch (e) { toast("Não consegui buscar as fotos: " + e.message); }
+    var out = [];
     for (var i = 0; i < c.slides.length; i++) {
       var sl = c.slides[i];
       if (onProgress) onProgress(i + 1, c.slides.length);
-      var blob = await renderSlideJpeg(sl, i, c.slides.length, slug, coverImg);
-      var url = await uploadSlide(blob, state.profile.id + "/" + c.id + "/" + stamp + "-" + (i + 1) + ".jpg");
-      await DB.update("slides", "id=eq." + sl.id, { render_url: url });
-      sl.render_url = url;
+      var img = slideImageUrl(sl) ? await loadImage(slideImageUrl(sl)) : null;
+      var blob = await renderSlideJpeg(sl, i, c.slides.length, slug, img);
+      out.push({ blob: blob, url: URL.createObjectURL(blob) });
     }
+    return out;
+  }
+
+  // sobe os JPEGs já aprovados no Storage e grava render_url em cada slide
+  async function uploadCarouselBlobs(c, blobs, onProgress) {
+    var stamp = Date.now();
+    for (var i = 0; i < blobs.length; i++) {
+      if (onProgress) onProgress(i + 1, blobs.length);
+      var url = await uploadSlide(blobs[i].blob, state.profile.id + "/" + c.id + "/" + stamp + "-" + (i + 1) + ".jpg");
+      await DB.update("slides", "id=eq." + c.slides[i].id, { render_url: url });
+      c.slides[i].render_url = url;
+    }
+  }
+
+  function legendaPadrao(c) { return c.legenda || c.slides.map(function (s) { return s.titulo; }).join(" · "); }
+
+  // prévia no formato de post do Instagram: o corretor vê exatamente as imagens que serão publicadas.
+  // modo "publicar" → botões Voltar / Publicar (resolve true/false). modo "ver" → só Fechar.
+  function showPostPreview(c, blobs, modo) {
+    return new Promise(function (resolve) {
+      var idx = 0, user = (state.igConta && state.igConta.status === "ativo" && state.igConta.username) || (state.profile.nome || "seu_perfil").toLowerCase().replace(/\s+/g, "");
+      var body = document.getElementById("modal-body");
+      function done(v) { blobs.forEach(function (b) { if (modo === "ver") URL.revokeObjectURL(b.url); }); closeModal(); resolve(v); }
+      function draw() {
+        body.innerHTML =
+          '<div class="modal-head"><div><h3 style="font-size:18px;">Como vai ficar no Instagram</h3>' +
+          '<p style="margin:4px 0 0;font-size:12.5px;color:var(--ink-muted);">' + (modo === "publicar" ? "Confira cada slide antes de publicar." : "Prévia das imagens finais do carrossel.") + '</p></div>' +
+          '<button class="modal-close" id="pv-close">' + ICONS.close + '</button></div>' +
+          '<div class="igpv"><div class="igpv-head"><div class="igpv-av">' + escapeHtml(user.slice(0, 1).toUpperCase()) + '</div><b>' + escapeHtml(user) + '</b></div>' +
+          '<div class="igpv-media"><img src="' + blobs[idx].url + '" alt="Slide ' + (idx + 1) + '">' +
+          (idx > 0 ? '<button class="igpv-nav l" id="pv-prev" aria-label="Anterior">‹</button>' : '') +
+          (idx < blobs.length - 1 ? '<button class="igpv-nav r" id="pv-next" aria-label="Próximo">›</button>' : '') +
+          '<span class="igpv-count">' + (idx + 1) + '/' + blobs.length + '</span></div>' +
+          '<div class="igpv-dots">' + blobs.map(function (b, k) { return '<span class="' + (k === idx ? "on" : "") + '"></span>'; }).join("") + '</div>' +
+          '<div class="igpv-cap"><b>' + escapeHtml(user) + '</b> ' + escapeHtml(legendaPadrao(c)) + '</div></div>' +
+          '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">' +
+          (modo === "publicar"
+            ? '<button class="btn btn-ghost btn-sm" id="pv-back">Voltar e ajustar</button><button class="btn btn-primary btn-sm" id="pv-ok">' + ICONS.ig + ' Publicar no Instagram</button>'
+            : '<button class="btn btn-ghost btn-sm" id="pv-back">Fechar</button>') + '</div>';
+        document.getElementById("pv-close").onclick = function () { done(false); };
+        document.getElementById("pv-back").onclick = function () { done(false); };
+        var ok = document.getElementById("pv-ok"); if (ok) ok.onclick = function () { done(true); };
+        var pr = document.getElementById("pv-prev"); if (pr) pr.onclick = function () { idx--; draw(); };
+        var nx = document.getElementById("pv-next"); if (nx) nx.onclick = function () { idx++; draw(); };
+      }
+      draw();
+      document.getElementById("overlay").hidden = false;
+    });
+  }
+
+  async function previewCarousel(c, btn) {
+    if (!c.slides || !c.slides.length) { toast("Este carrossel não tem slides."); return; }
+    var orig = btn ? btn.innerHTML : "";
+    if (btn) btn.disabled = true;
+    try {
+      var blobs = await renderCarouselBlobs(c, function (n, t) { if (btn) btn.innerHTML = '<div class="spin"></div> Gerando ' + n + "/" + t + "…"; });
+      await showPostPreview(c, blobs, "ver");
+    } catch (err) { toast("Erro ao gerar a prévia: " + err.message); }
+    finally { if (btn) { btn.disabled = false; btn.innerHTML = orig; } }
   }
 
   async function publishToInstagram(c, btn) {
@@ -395,10 +488,15 @@
     function label(t) { if (btn) btn.innerHTML = '<div class="spin"></div> ' + t; }
     if (btn) btn.disabled = true;
     try {
-      await renderCarouselImages(c, function (n, t) { label("Gerando imagem " + n + "/" + t + "…"); });
-      label("Enviando ao Instagram…");
-      var legenda = c.legenda || c.slides.map(function (s) { return s.titulo; }).join(" · ");
-      var resp = await callFunction("instagram-publicar", { carrossel_id: c.id, legenda: legenda });
+      var blobs = await renderCarouselBlobs(c, function (n, t) { label("Gerando imagem " + n + "/" + t + "…"); });
+      if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+      var aprovado = await showPostPreview(c, blobs, "publicar");   // sempre mostra como ficou antes de postar
+      blobs.forEach(function (b) { setTimeout(function () { URL.revokeObjectURL(b.url); }, 60000); });
+      if (!aprovado) { toast("Publicação cancelada — nada foi enviado ao Instagram."); return false; }
+      if (btn) btn.disabled = true;
+      await uploadCarouselBlobs(c, blobs, function (n, t) { label("Enviando imagem " + n + "/" + t + "…"); });
+      label("Publicando no Instagram…");
+      var resp = await callFunction("instagram-publicar", { carrossel_id: c.id, legenda: legendaPadrao(c) });
       c.status = "publicado"; c.data_publicada = resp.data_publicada; c.instagram_permalink = resp.permalink;
       toast("Publicado no Instagram!");
       return true;
@@ -594,7 +692,8 @@
     var igOk = state.igConta && state.igConta.status === "ativo";
     var extra = c.status === "publicado"
       ? (c.instagram_permalink ? '<a class="btn btn-ghost btn-sm" href="' + escapeHtml(c.instagram_permalink) + '" target="_blank" rel="noopener">' + ICONS.ig + ' Ver no Instagram</a>' : "")
-      : '<div style="display:flex;gap:8px;">' +
+      : '<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">' +
+        '<button class="btn btn-ghost btn-sm" id="preview-ig">' + ICONS.eye + ' Ver como fica</button>' +
         (c.status === "agendado" ? '<button class="btn btn-ghost btn-sm" id="mark-published">' + ICONS.check + ' Marcar como publicado</button>' : "") +
         '<button class="btn btn-primary btn-sm" id="publish-ig"' + (igOk ? "" : ' title="Conecte o Instagram na aba Instagram"') + '>' + ICONS.ig + ' Publicar no Instagram</button></div>';
     document.getElementById("modal-body").innerHTML =
@@ -607,9 +706,12 @@
       '<span style="font-size:12px;color:var(--ink-faint);">' + escapeHtml(meta.sub) + '</span>' + extra + '</div>';
     document.getElementById("overlay").hidden = false;
     document.getElementById("modal-close").addEventListener("click", closeModal);
+    var pv = document.getElementById("preview-ig");
+    if (pv) pv.addEventListener("click", async function () { await previewCarousel(c, pv); openCarouselModal(c.id); });
     var pi = document.getElementById("publish-ig");
     if (pi) pi.addEventListener("click", async function () {
       if (await publishToInstagram(c, pi)) { closeModal(); renderPainel(); renderInstagram(); }
+      else if (document.getElementById("overlay").hidden) openCarouselModal(c.id);
     });
     var mp = document.getElementById("mark-published");
     if (mp) mp.addEventListener("click", async function () {
@@ -748,6 +850,12 @@
   }
 
   function invalidateSlides() { wizard.slides = null; }
+  // contexto curto (bairro/tipo do imóvel ou categoria do assunto) pra imagem de cada slide combinar com o tema
+  function wizardContexto() {
+    if (wizard.subjectMode === "property") { var p = findProp(wizard.propertyId); return p ? (p.tipo || "imóvel") + " em " + (p.bairro || "") : ""; }
+    if (wizard.subjectMode === "topic") { var t = findTopic(wizard.topicId); return t ? "mercado imobiliário, " + t.categoria : ""; }
+    return "mercado imobiliário, " + (wizard.customCategoria || "");
+  }
 
   var CATEGORIAS = ["Dicas", "Financiamento", "Vendas", "Mercado"];
 
@@ -952,6 +1060,9 @@
       var resp = await callFunction("gerar-conteudo", { origem: origem, dados: dados, direcionamento: wizard.customPrompt || undefined });
       wizard.slides = resp.slides || [];
       if (!wizard.slides.length) throw new Error("A IA não retornou slides. Tente gerar de novo.");
+      area.querySelector(".gen-empty p").textContent = "Texto pronto. Buscando fotos reais em alta resolução pra cada slide…";
+      try { await garantirFotosReais(wizard.slides, wizardContexto(), false); }
+      catch (e) { toast("Fotos não encontradas agora (" + e.message + ") — dá pra tentar de novo na prévia."); }
       renderGenArea();
     } catch (err) {
       renderGenArea(err.message || "Erro ao gerar conteúdo. Tente de novo.");
@@ -1037,15 +1148,14 @@
     try {
       var rows = await DB.insert("carrosseis", payload);
       var carrossel = rows[0];
-      var coverPrompt = wizardCoverPrompt();
-      var coverUrl = pollinationsUrl(coverPrompt);
       // PostgREST exige que todo objeto do array tenha exatamente as mesmas chaves num insert em lote —
       // por isso imagem_url/imagem_prompt vão em todas as linhas (null exceto na capa), nunca só condicionalmente.
       var slideRows = wizard.slides.map(function (s, i) {
         return {
           carrossel_id: carrossel.id, ordem: i, tag: s.tag, titulo: s.titulo, corpo: s.corpo,
-          imagem_url: i === 0 ? coverUrl : null,
-          imagem_prompt: i === 0 ? coverPrompt : null
+          // foto real (Pexels) de fundo em todo slide; imagem_prompt guarda o crédito do fotógrafo
+          imagem_url: isFotoReal(s.imagem_url) ? s.imagem_url : null,
+          imagem_prompt: isFotoReal(s.imagem_url) ? (s.imagem_prompt || null) : null
         };
       });
       var savedSlides = await DB.insert("slides", slideRows);

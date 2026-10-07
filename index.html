@@ -157,6 +157,17 @@ body .auth-card{padding:22px;}
   .prop-foot{padding:0 14px 14px;}
   .prop-foot .btn{width:100%; justify-content:center;}
   .meta.erro-pub{color:#ff9aab; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;}
+  .admin-head{display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;}
+  .admin-tools{display:flex; gap:8px; flex-wrap:wrap;}
+  .admin-tools input{background:var(--surface); border:1px solid var(--border); color:var(--ink); border-radius:9px; padding:8px 12px; font:inherit; font-size:13px; min-width:240px;}
+  .admin-tabela-wrap{overflow-x:auto; border:1px solid var(--border); border-radius:14px; background:var(--surface);}
+  .admin-tabela{width:100%; border-collapse:collapse; font-size:13px; min-width:900px;}
+  .admin-tabela th{text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-faint); padding:12px 14px; border-bottom:1px solid var(--border); white-space:nowrap;}
+  .admin-tabela td{padding:11px 14px; border-bottom:1px solid var(--border); vertical-align:top;}
+  .admin-tabela tr:last-child td{border-bottom:none;}
+  .admin-tabela .sub{color:var(--ink-faint); font-size:12px;}
+  .adm-pill{display:inline-block; padding:3px 9px; border-radius:20px; font-size:11.5px; font-weight:700; white-space:nowrap;}
+  .adm-pill.ativa{background:rgba(0,224,160,.14); color:#3ee6b4;} .adm-pill.trial{background:rgba(139,92,255,.16); color:#c4b0ff;} .adm-pill.outro{background:rgba(255,255,255,.07); color:var(--ink-muted);}
   .prop-acts{display:flex; gap:8px; margin-top:8px;}
   .prop-acts .btn{flex:1;}
   .btn-danger{color:#ff7a90 !important; border-color:rgba(255,122,144,0.35) !important;}
@@ -710,6 +721,10 @@ body .auth-card{padding:22px;}
           <span class="label">Plano</span>
           <span class="count" id="nav-plan-count" hidden></span>
         </button>
+        <button class="navitem" data-screen="admin" id="nav-admin" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>
+          <span class="label">Admin</span>
+        </button>
       </nav>
 
       <a class="sidebar-suporte" data-suporte-link href="mailto:vitrinecorretor@gmail.com"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg><span class="label">Suporte</span></a>
@@ -844,6 +859,14 @@ body .auth-card{padding:22px;}
           <div class="queue-list" id="queue-scheduled" style="margin-bottom:26px;"></div>
           <div class="section-head"><h2>Publicados</h2></div>
           <div class="queue-list" id="queue-published"></div>
+        </section>
+
+        <!-- ADMIN (só o dono da plataforma; os dados são protegidos no servidor) -->
+        <section class="screen" id="screen-admin" hidden>
+          <div class="stat-row" id="admin-resumo"></div>
+          <div class="section-head admin-head"><h2>Contas cadastradas</h2>
+            <div class="admin-tools"><input type="search" id="admin-busca" placeholder="Buscar por nome, e-mail ou cidade"><button class="btn btn-ghost btn-sm" id="admin-csv">Baixar CSV</button><button class="btn btn-ghost btn-sm" id="admin-atualizar">Atualizar</button></div></div>
+          <div class="admin-tabela-wrap"><table class="admin-tabela" id="admin-tabela"></table></div>
         </section>
 
         <!-- PLANO / PAGAMENTO -->

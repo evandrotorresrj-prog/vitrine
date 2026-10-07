@@ -554,6 +554,22 @@
     }
   }
 
+  // agendamento: deixa as imagens do feed prontas no Storage (render_url) pro servidor publicar na hora marcada
+  async function prepararAgendado(c, onProgress) {
+    var blobs = await renderCarouselBlobs(c, onProgress, "feed");
+    await uploadCarouselBlobs(c, blobs);
+    blobs.forEach(function (b) { setTimeout(function () { URL.revokeObjectURL(b.url); }, 30000); });
+  }
+  // agendados antigos (de antes da publicação automática) sem imagens: prepara em segundo plano quando o app abre
+  async function prepararAgendadosPendentes() {
+    var pend = state.carrosseis.filter(function (c) {
+      return c.status === "agendado" && c.slides && c.slides.length && c.slides.some(function (s) { return !s.render_url; });
+    });
+    for (var i = 0; i < pend.length; i++) {
+      try { await prepararAgendado(pend[i]); } catch (e) { console.warn("agendado sem imagens:", e); }
+    }
+  }
+
   function legendaPadrao(c) { return c.legenda || c.slides.map(function (s) { return s.titulo; }).join(" · "); }
 
   var FORMATOS = {
@@ -841,6 +857,7 @@
           '<h4>' + escapeHtml(meta.titulo) + '</h4>' +
           '<div class="addr">' + escapeHtml(meta.sub) + '</div>' +
           '<div class="meta">' + when + '</div>' +
+          (c.erro_publicacao ? '<div class="meta erro-pub" title="' + escapeHtml(c.erro_publicacao) + '">⚠ ' + escapeHtml(c.erro_publicacao) + '</div>' : '') +
           '<div class="actions">' +
           '<button class="btn btn-ghost btn-sm" data-view="' + c.id + '">' + ICONS.eye + '</button>' +
           '<button class="btn btn-ghost btn-sm" data-del="' + c.id + '">' + ICONS.trash + '</button>' +
@@ -1502,6 +1519,7 @@
       if (!date) { toast("Escolha a data da publicação."); return; }
       if (new Date(date + "T" + time) <= new Date()) { toast("Esse horário já passou — escolha outro no calendário."); return; }
       payload.data_agendada = new Date(date + "T" + time).toISOString();
+      if (wizard.slides.length < 2 || wizard.slides.length > 10) { toast("Pra publicar no feed o carrossel precisa ter de 2 a 10 slides."); return; }
     } else if (wizard.dest === "publicado") {
       payload.data_publicada = new Date().toISOString();
     }
@@ -1547,8 +1565,16 @@
         if (!ok) toast("Carrossel salvo como rascunho — tente publicar de novo pelo painel.");
         resetWizard(); showScreen("painel"); return;
       }
+      if (wizard.dest === "agendado") {
+        // gera e sobe agora as imagens do feed: na hora marcada o servidor publica sozinho, mesmo com o app fechado
+        try {
+          await prepararAgendado(carrossel, function (n, t) { btn.textContent = "Preparando imagens " + n + "/" + t + "…"; });
+        } catch (e) {
+          toast("Agendado, mas as imagens não foram preparadas (" + e.message + "). Abra o app antes do horário que eu tento de novo.");
+        }
+      }
       if (wizard.dest === "rascunho") toast("Rascunho salvo.");
-      else if (wizard.dest === "agendado") toast("Agendado para " + fmtDateTime(payload.data_agendada) + ".");
+      else if (wizard.dest === "agendado") toast("Agendado para " + fmtDateTime(payload.data_agendada) + (state.igConta && state.igConta.status === "ativo" ? " — vai ser publicado sozinho no Instagram." : ". Conecte o Instagram (aba Instagram) até lá pra publicar sozinho."));
       else toast("Marcado como publicado (conecte o Instagram para envio automático).");
 
       resetWizard(); showScreen("painel");
@@ -1843,6 +1869,8 @@
       var resp = await callFunction("gerenciar-assinatura", { acao: "iniciar_trial" });
       state.assinatura = resp.assinatura;
     }
+    // não trava a abertura do app: prepara em segundo plano as imagens de agendados antigos
+    setTimeout(function () { prepararAgendadosPendentes(); }, 1500);
   }
 
   // visitante sem login vê a página de captação; os botões abrem o cadastro (teste grátis) ou o login

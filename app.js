@@ -780,7 +780,8 @@
     novo: ["Novo carrossel", "IA gera o conteúdo, você ajusta o estilo e agenda."],
     instagram: ["Instagram", "Conexão e fila de publicação."],
     plano: ["Plano", "Seu teste grátis e sua assinatura da Vitrine."],
-    admin: ["Admin", "Contas cadastradas na plataforma (visível só pra você)."]
+    admin: ["Admin", "Contas cadastradas na plataforma (visível só pra você)."],
+    equipe: ["Equipe", "Os corretores da sua imobiliária na Vitrine."]
   };
   // quem vê o menu Admin (o servidor também confere — sem isso ele devolve 403)
   var ADMIN_IDS = ["f13c2703-8848-485a-ae60-97e139a2b0a6"];
@@ -797,7 +798,105 @@
     if (name === "instagram") renderInstagram();
     if (name === "plano") renderPlano();
     if (name === "admin") renderAdmin();
+    if (name === "equipe") renderEquipe();
     if (name === "novo" && wizard.step === 1) renderWizard();
+  }
+
+  /* ---------------- EQUIPE (planos de imobiliária) ---------------- */
+  var equipeInfo = null;
+  async function carregarEquipe() {
+    try { equipeInfo = await callFunction("equipe", { acao: "minha" }); }
+    catch (e) { equipeInfo = null; }
+    document.getElementById("nav-equipe").hidden = !(equipeInfo && equipeInfo.papel);
+    return equipeInfo;
+  }
+  async function renderEquipe() {
+    var box = document.getElementById("equipe-body");
+    box.innerHTML = '<div class="eq-card" style="color:var(--ink-muted);">Carregando…</div>';
+    await carregarEquipe();
+    var d = equipeInfo;
+    if (!d || !d.papel) {
+      box.innerHTML = '<div class="eq-card"><h3 style="font-size:16px;margin:0 0 6px;">Você ainda não tem equipe</h3><p style="margin:0 0 12px;color:var(--ink-muted);font-size:13px;">Assine um plano para imobiliárias e convide seus corretores.</p><button class="btn btn-primary btn-sm" id="eq-ver-planos">Ver planos para imobiliárias</button></div>';
+      document.getElementById("eq-ver-planos").onclick = function () { showScreen("plano"); };
+      return;
+    }
+    if (d.papel === "membro") {
+      box.innerHTML = '<div class="eq-card"><h3 style="font-size:17px;margin:0 0 4px;">' + escapeHtml(d.equipe.nome || "Sua imobiliária") + '</h3>' +
+        '<p style="margin:0 0 14px;color:var(--ink-muted);font-size:13px;">Você usa a Vitrine pelo plano da imobiliária' + (d.equipe.dono ? " de " + escapeHtml(d.equipe.dono) : "") + '.' + (d.equipe.ativa ? "" : " A assinatura da imobiliária está pausada no momento.") + '</p>' +
+        '<button class="btn btn-ghost btn-sm btn-danger" id="eq-sair">Sair da equipe</button></div>';
+      document.getElementById("eq-sair").onclick = async function () {
+        if (!confirm("Sair da equipe? Você volta para o teste grátis.")) return;
+        try { await callFunction("equipe", { acao: "sair" }); toast("Você saiu da equipe."); location.reload(); } catch (e) { toast(e.message); }
+      };
+      return;
+    }
+    var membros = d.membros || [];
+    var usadas = 1 + membros.length;
+    box.innerHTML =
+      '<div class="eq-card"><div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;">' +
+      '<div><div style="font-size:12px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.04em;">' + escapeHtml(d.equipe.plano || "Plano de imobiliária") + (d.equipe.ativa ? "" : " · pausado") + '</div>' +
+      '<h3 style="font-size:18px;margin:4px 0 0;"><span id="eq-nome">' + escapeHtml(d.equipe.nome || "Minha imobiliária") + '</span> <button class="btn btn-ghost btn-xs" id="eq-renomear">Renomear</button></h3></div>' +
+      '<div style="text-align:right;"><div class="eq-vagas">' + usadas + '/' + d.equipe.max + '</div><div style="font-size:12px;color:var(--ink-muted);">vagas usadas (com você)</div></div></div>' +
+      (d.equipe.ativa ? '<div class="eq-convite"><input type="email" id="eq-email" placeholder="E-mail do corretor (o mesmo que ele vai usar pra entrar)"><button class="btn btn-primary btn-sm" id="eq-convidar">Convidar</button></div><div id="eq-link-box"></div>'
+        : '<p style="margin:12px 0 0;color:#ff9aab;font-size:13px;">A assinatura da imobiliária não está ativa. Assine de novo em Plano para os corretores voltarem a ter acesso.</p>') + '</div>' +
+      '<div class="admin-tabela-wrap"><table class="admin-tabela" style="min-width:640px;"><thead><tr><th>Corretor</th><th>Situação</th><th>Carrosséis</th><th></th></tr></thead><tbody>' +
+      (membros.length ? membros.map(function (m) {
+        return '<tr><td><b>' + escapeHtml(m.nome || m.email) + '</b>' + (m.nome ? '<div class="sub">' + escapeHtml(m.email) + '</div>' : "") + '</td>' +
+          '<td>' + (m.status === "ativo" ? '<span class="adm-pill ativa">Ativo</span>' : '<span class="adm-pill trial">Convite enviado</span>' + (m.link ? '<div style="margin-top:6px;"><button class="btn btn-ghost btn-xs" data-copiar="' + escapeHtml(m.link) + '">Copiar link</button></div>' : "")) + '</td>' +
+          '<td>' + (m.status === "ativo" ? m.carrosseis : "—") + '</td>' +
+          '<td style="text-align:right;"><button class="btn btn-ghost btn-xs btn-danger" data-remover="' + escapeHtml(m.id) + '">' + (m.status === "ativo" ? "Remover" : "Cancelar convite") + '</button></td></tr>';
+      }).join("") : '<tr><td colspan="4" style="padding:20px;color:var(--ink-muted);">Nenhum corretor convidado ainda. Digite o e-mail acima e mande o link pra ele.</td></tr>') +
+      '</tbody></table></div>';
+    var conv = document.getElementById("eq-convidar");
+    if (conv) conv.onclick = async function () {
+      var email = document.getElementById("eq-email").value.trim();
+      if (!email) { toast("Digite o e-mail do corretor."); return; }
+      conv.disabled = true;
+      try {
+        var r = await callFunction("equipe", { acao: "convidar", email: email });
+        await renderEquipe();
+        if (r.link) mostrarLinkConvite(r.link, email);
+        else toast("Esse corretor já está na equipe.");
+      } catch (e) { toast(e.message); conv.disabled = false; }
+    };
+    document.getElementById("eq-renomear").onclick = async function () {
+      var nome = prompt("Nome da imobiliária:", d.equipe.nome || "");
+      if (nome == null) return;
+      try { await callFunction("equipe", { acao: "renomear", nome: nome }); renderEquipe(); } catch (e) { toast(e.message); }
+    };
+    qsa("[data-copiar]", box).forEach(function (b) { b.onclick = function () { copiarTexto(b.dataset.copiar); }; });
+    qsa("[data-remover]", box).forEach(function (b) {
+      b.onclick = async function () {
+        if (!confirm("Tirar esse corretor da equipe? Ele volta para o teste grátis.")) return;
+        try { await callFunction("equipe", { acao: "remover", membro_id: b.dataset.remover }); toast("Feito."); renderEquipe(); } catch (e) { toast(e.message); }
+      };
+    });
+  }
+  function copiarTexto(t) {
+    (navigator.clipboard ? navigator.clipboard.writeText(t) : Promise.reject()).then(function () { toast("Link copiado."); }, function () { prompt("Copie o link:", t); });
+  }
+  function mostrarLinkConvite(link, email) {
+    var box = document.getElementById("eq-link-box"); if (!box) return;
+    var msg = "Oi! Te convidei pra usar a Vitrine pela nossa imobiliária. Crie sua conta (ou entre) com o e-mail " + email + " por este link: " + link;
+    box.innerHTML = '<div class="eq-link"><span style="flex:1;">Convite criado para <b>' + escapeHtml(email) + '</b>. Mande este link pra ele:<br><span class="mono">' + escapeHtml(link) + '</span></span>' +
+      '<button class="btn btn-ghost btn-xs" id="eq-copiar-novo">Copiar</button><a class="btn btn-primary btn-xs" target="_blank" rel="noopener noreferrer" href="https://wa.me/?text=' + encodeURIComponent(msg) + '">WhatsApp</a></div>';
+    document.getElementById("eq-copiar-novo").onclick = function () { copiarTexto(link); };
+  }
+  // convite: ?convite=TOKEN — guarda o token até a pessoa entrar/criar conta e então aceita
+  var CONVITE_KEY = "vitrine-convite";
+  function guardarConviteDaUrl() {
+    var p = new URLSearchParams(location.search), t = p.get("convite");
+    if (t && /^[a-f0-9]{64}$/.test(t)) { try { sessionStorage.setItem(CONVITE_KEY, t); } catch (e) { } history.replaceState(null, "", location.pathname); return true; }
+    return false;
+  }
+  function conviteGuardado() { try { return sessionStorage.getItem(CONVITE_KEY); } catch (e) { return null; } }
+  async function aceitarConvitePendente() {
+    var t = conviteGuardado(); if (!t) return;
+    try { sessionStorage.removeItem(CONVITE_KEY); } catch (e) { }
+    try {
+      var r = await callFunction("equipe", { acao: "aceitar", token: t });
+      if (!r.ja) { toast("Pronto! Você entrou na equipe" + (r.equipe ? " " + r.equipe : "") + "."); setTimeout(function () { location.reload(); }, 1500); }
+    } catch (e) { toast(e.message); }
   }
 
   /* ---------------- ADMIN ---------------- */
@@ -1785,6 +1884,13 @@
         '<h3 style="font-size:17px;margin-bottom:4px;">Teste grátis</h3>' +
         '<p style="margin:0;font-size:13px;color:var(--ink-muted);">' + used + ' de ' + limit + ' carrosséis grátis usados' + (left > 0 ? " · restam " + left : " · limite atingido") + '</p>' +
         '</div><span class="trial-pill' + (left <= 0 ? " full" : "") + '"><span class="dot"></span>' + (left > 0 ? left + " restante" + (left > 1 ? "s" : "") : "sem créditos") + '</span></div>';
+    } else if (state.assinatura.equipe_id) {
+      var planoEq = findPlano(state.assinatura.plano_id);
+      statusEl.innerHTML = '<div class="plan-banner pro"><div>' +
+        '<h3 style="font-size:17px;margin-bottom:4px;">Acesso pela imobiliária' + (equipeInfo && equipeInfo.equipe && equipeInfo.equipe.nome ? " · " + escapeHtml(equipeInfo.equipe.nome) : "") + '</h3>' +
+        '<p style="margin:0;font-size:13px;color:var(--ink-muted);">' + (planoEq ? escapeHtml(planoEq.nome) + " · " : "") + 'carrosséis ilimitados, pago pela sua imobiliária</p>' +
+        '</div><button class="btn btn-ghost btn-sm" id="ir-equipe">Ver equipe</button></div>';
+      document.getElementById("ir-equipe").addEventListener("click", function () { showScreen("equipe"); });
     } else {
       var plano = findPlano(state.assinatura.plano_id);
       statusEl.innerHTML = '<div class="plan-banner pro"><div>' +
@@ -1812,7 +1918,7 @@
       '<button data-period="mensal" class="' + (planPeriod === "mensal" ? "active" : "") + '">Mensal</button>' +
       '<button data-period="anual" class="' + (planPeriod === "anual" ? "active" : "") + '">Anual · 2 meses grátis</button>' +
       '</div>' +
-      state.planos.map(function (p) {
+      state.planos.filter(function (p) { return p.tipo !== "equipe"; }).map(function (p) {
         var preco = planPeriod === "anual" ? p.preco_anual : p.preco_mensal;
         var isCurrent = state.assinatura && state.assinatura.status === "ativa" && state.assinatura.plano_id === p.id;
         return '<div class="plan-card ' + (p.destaque ? "featured" : "") + '">' +
@@ -1824,6 +1930,22 @@
           (isCurrent ? "Plano atual" : "Assinar " + escapeHtml(p.nome)) + '</button></div>';
       }).join("");
 
+    var equipes = state.planos.filter(function (p) { return p.tipo === "equipe"; });
+    document.getElementById("plan-grid-equipe").innerHTML = equipes.length ? '<h3 class="plan-sec-title">Planos para imobiliárias</h3><p class="plan-sec-sub">Você assina e convida seus corretores por link — cada um usa a própria conta com tudo do Pro. Você conta como 1 corretor.</p>' +
+      equipes.map(function (p) {
+        var preco = planPeriod === "anual" ? p.preco_anual : p.preco_mensal;
+        var isCurrent = state.assinatura && state.assinatura.status === "ativa" && state.assinatura.plano_id === p.id && !state.assinatura.equipe_id;
+        var porCorretor = Number(p.preco_mensal) / (p.max_corretores || 1);
+        return '<div class="plan-card ' + (p.destaque ? "featured" : "") + '">' + (p.destaque ? '<span class="badge">Melhor custo</span>' : "") +
+          '<h3>' + escapeHtml(p.nome) + '</h3>' +
+          '<div class="plan-price mono">' + fmtBRL(preco) + ' <span>/' + (planPeriod === "anual" ? "ano" : "mês") + '</span></div>' +
+          '<div style="font-size:12px;color:var(--ink-muted);margin:-4px 0 10px;">≈ R$ ' + porCorretor.toFixed(2).replace(".", ",") + ' por corretor/mês</div>' +
+          '<ul class="plan-feats">' + (p.recursos || []).map(function (f) { return '<li>' + ICONS.check + escapeHtml(f) + '</li>'; }).join("") + '</ul>' +
+          '<button class="btn ' + (p.destaque ? "btn-primary" : "btn-2") + '" style="width:100%;justify-content:center;" data-subscribe="' + escapeHtml(p.id) + '" ' + (isCurrent ? "disabled" : "") + '>' + (isCurrent ? "Plano atual" : "Assinar " + escapeHtml(p.nome)) + '</button></div>';
+      }).join("") +
+      '<div class="plan-card"><h3>50+ corretores</h3><div class="plan-price mono">R$ 59,90 <span>/corretor</span></div>' +
+      '<ul class="plan-feats"><li>' + ICONS.check + 'Rede ou imobiliária grande</li><li>' + ICONS.check + 'Tudo do Pro para cada corretor</li><li>' + ICONS.check + 'Condição sob medida</li></ul>' +
+      '<a class="btn btn-2" style="width:100%;justify-content:center;text-decoration:none;" href="mailto:' + SUPORTE_EMAIL + '?subject=' + encodeURIComponent("Plano 50+ corretores") + '">Falar com a Vitrine</a></div>' : "";
     qsa("[data-period]").forEach(function (b) { b.addEventListener("click", function () { planPeriod = b.dataset.period; renderPlano(); }); });
     qsa("[data-subscribe]").forEach(function (b) { b.addEventListener("click", function () { planPending = b.dataset.subscribe; renderCheckout(); }); });
     document.getElementById("checkout-box").hidden = !planPending;
@@ -1983,10 +2105,12 @@
     var appView = document.getElementById("app-view");
     loading.hidden = false; authView.hidden = true; appView.hidden = true;
 
+    var temConvite = guardarConviteDaUrl();
     var session = Auth.load();
     if (!session) {
       loading.hidden = true;
-      if (/entrar|login/.test(location.hash)) openAuth("login");
+      if (temConvite) { openAuth("signup"); toast("Você foi convidado para a equipe de uma imobiliária na Vitrine. Crie sua conta (ou entre) com o e-mail do convite."); }
+      else if (/entrar|login/.test(location.hash)) openAuth("login");
       else if (/teste|cadastro/.test(location.hash)) openAuth("signup");
       else showLanding();
       return;
@@ -2011,6 +2135,7 @@
       document.getElementById("workspace-name").textContent = state.profile.nome ? state.profile.nome + " · Vitrine" : "Vitrine";
 
       document.getElementById("nav-admin").hidden = !ehAdmin();
+      carregarEquipe().then(aceitarConvitePendente);
       if (!navWired) { wireNav(); navWired = true; }
       updateNavPlanBadge();
       resetWizard();

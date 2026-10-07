@@ -157,6 +157,20 @@ body .auth-card{padding:22px;}
   .prop-foot{padding:0 14px 14px;}
   .prop-foot .btn{width:100%; justify-content:center;}
   .meta.erro-pub{color:#ff9aab; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;}
+  .lp-imob{margin-top:56px;} .lp-h3{font-family:"Space Grotesk",sans-serif; font-size:clamp(22px,2.6vw,30px); text-align:center; margin:0;}
+  .lp-plans.lp-plans-4{grid-template-columns:repeat(4,minmax(0,1fr)); max-width:1180px; margin:0 auto;}
+  @media (max-width: 1100px){ .lp-plans.lp-plans-4{grid-template-columns:repeat(2,minmax(0,1fr));} }
+  @media (max-width: 600px){ .lp-plans.lp-plans-4{grid-template-columns:1fr;} }
+  .lp-plan a.lp-full{display:flex; justify-content:center; text-decoration:none;}
+  .plan-sec-title{grid-column:1/-1; margin:18px 0 0; font-size:15px;} .plan-sec-sub{grid-column:1/-1; margin:-6px 0 4px; font-size:12.5px; color:var(--ink-muted);}
+  .plan-grid.equipe{grid-template-columns:repeat(4,minmax(0,1fr)); max-width:1100px;}
+  @media (max-width: 1100px){ .plan-grid.equipe{grid-template-columns:repeat(2,minmax(0,1fr));} }
+  @media (max-width: 600px){ .plan-grid.equipe{grid-template-columns:1fr;} }
+  .eq-card{background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:18px; margin-bottom:16px;}
+  .eq-convite{display:flex; gap:8px; flex-wrap:wrap; margin-top:10px;}
+  .eq-convite input{flex:1; min-width:220px; background:var(--bg); border:1px solid var(--border); color:var(--ink); border-radius:9px; padding:9px 12px; font:inherit; font-size:13px;}
+  .eq-link{display:flex; gap:8px; align-items:center; margin-top:10px; padding:10px 12px; border-radius:10px; background:rgba(139,92,255,.1); border:1px solid rgba(139,92,255,.3); font-size:12.5px; word-break:break-all;}
+  .eq-vagas{font-family:"Space Grotesk",sans-serif; font-size:28px; font-weight:800;}
   .admin-head{display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;}
   .admin-tools{display:flex; gap:8px; flex-wrap:wrap;}
   .admin-tools input{background:var(--surface); border:1px solid var(--border); color:var(--ink); border-radius:9px; padding:8px 12px; font:inherit; font-size:13px; min-width:240px;}
@@ -656,11 +670,22 @@ body .auth-card{padding:22px;}
         <ul><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5 11-11"/></svg>Carrosséis ilimitados</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5 11-11"/></svg>Sugestões de assuntos virais</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5 11-11"/></svg>Fotos reais em todos os slides</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5 11-11"/></svg>1 usuário</li></ul>
         <button class="btn btn-ghost lp-full" data-cta="signup">Começar teste grátis</button></div>
       <div class="lp-plan destaque"><span class="lp-badge">Mais escolhido</span><h3>Pro</h3><div class="lp-price">R$ 197<span>/mês</span></div><div class="lp-promo-preco" data-promo><s>R$ 197</s> <b>R$ 137,90</b> no 1º mês</div>
-        <ul><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5 11-11"/></svg>Tudo do Starter</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5 11-11"/></svg>Publicação direta no Instagram</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5 11-11"/></svg>Feed, Reels e Stories</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5 11-11"/></svg>Até 3 usuários na conta</li></ul>
+        <ul><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5 11-11"/></svg>Tudo do Starter</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5 11-11"/></svg>Publicação direta no Instagram</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5 11-11"/></svg>Feed, Reels e Stories</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5 11-11"/></svg>1 corretor por conta</li></ul>
         <button class="btn btn-primary lp-full" data-cta="signup">Começar teste grátis</button></div>
     </div>
     <p class="lp-note center">Plano anual com 2 meses grátis · Pagamento seguro pelo Stripe</p>
     <p class="lp-note center" data-promo>Desconto de 30% no 1º mês válido para a primeira assinatura do plano mensal, aplicado automaticamente no pagamento.</p>
+    <div class="lp-imob" id="imobiliarias">
+      <h3 class="lp-h3">Para imobiliárias</h3>
+      <p class="lp-lead">Um plano para a equipe inteira: você assina, convida seus corretores por link e cada um usa a própria conta com tudo do Pro.</p>
+      <div class="lp-plans lp-plans-4">
+        <div class="lp-plan"><h3>Imobiliária 5</h3><div class="lp-price">R$ 447<span>/mês</span></div><ul><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5 11-11"/></svg>Até 5 corretores</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5 11-11"/></svg>Tudo do Pro para cada corretor</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5 11-11"/></svg>Convite por link</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5 11-11"/></svg>Painel da equipe</li></ul><button class="btn btn-ghost lp-full" data-cta="signup">Começar teste grátis</button></div>
+        <div class="lp-plan destaque"><span class="lp-badge">Melhor custo</span><h3>Imobiliária 10</h3><div class="lp-price">R$ 797<span>/mês</span></div><ul><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5 11-11"/></svg>Até 10 corretores</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5 11-11"/></svg>Tudo do Pro para cada corretor</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5 11-11"/></svg>Convite por link</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5 11-11"/></svg>Painel da equipe</li></ul><button class="btn btn-primary lp-full" data-cta="signup">Começar teste grátis</button></div>
+        <div class="lp-plan"><h3>Imobiliária 30</h3><div class="lp-price">R$ 1.997<span>/mês</span></div><ul><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5 11-11"/></svg>Até 30 corretores</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5 11-11"/></svg>Tudo do Pro para cada corretor</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5 11-11"/></svg>Convite por link</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5 11-11"/></svg>Painel da equipe</li></ul><button class="btn btn-ghost lp-full" data-cta="signup">Começar teste grátis</button></div>
+        <div class="lp-plan"><h3>50+ corretores</h3><div class="lp-price">R$ 59,90<span>/corretor</span></div><ul><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5 11-11"/></svg>Rede ou imobiliária grande</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5 11-11"/></svg>Tudo do Pro para cada corretor</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5 11-11"/></svg>Condição sob medida</li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12l5 5 11-11"/></svg>Atendimento direto</li></ul><a class="btn btn-ghost lp-full" data-suporte-assunto="Plano 50+ corretores" href="mailto:vitrinecorretor@gmail.com?subject=Plano%2050%2B%20corretores">Falar com a Vitrine</a></div>
+      </div>
+      <p class="lp-note center">Planos de imobiliária: anual com 2 meses grátis. O dono da conta conta como 1 corretor.</p>
+    </div>
   </section>
 
   <section class="lp-sec" id="duvidas">
@@ -720,6 +745,10 @@ body .auth-card{padding:22px;}
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 9.5h19"/><path d="M6 14.5h4"/></svg>
           <span class="label">Plano</span>
           <span class="count" id="nav-plan-count" hidden></span>
+        </button>
+        <button class="navitem" data-screen="equipe" id="nav-equipe" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><circle cx="17" cy="9" r="2.5"/><path d="M15.5 14.2A5 5 0 0 1 21 19"/></svg>
+          <span class="label">Equipe</span>
         </button>
         <button class="navitem" data-screen="admin" id="nav-admin" hidden>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>
@@ -861,6 +890,9 @@ body .auth-card{padding:22px;}
           <div class="queue-list" id="queue-published"></div>
         </section>
 
+        <!-- EQUIPE (planos de imobiliária) -->
+        <section class="screen" id="screen-equipe" hidden><div id="equipe-body"></div></section>
+
         <!-- ADMIN (só o dono da plataforma; os dados são protegidos no servidor) -->
         <section class="screen" id="screen-admin" hidden>
           <div class="stat-row" id="admin-resumo"></div>
@@ -874,6 +906,7 @@ body .auth-card{padding:22px;}
           <div id="plan-status"></div>
           <div class="section-head" style="margin-top:22px;"><h2>Planos</h2></div>
           <div class="plan-grid" id="plan-grid"></div>
+          <div class="plan-grid equipe" id="plan-grid-equipe"></div>
           <div id="checkout-box" hidden></div>
         </section>
 

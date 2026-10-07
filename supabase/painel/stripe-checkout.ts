@@ -68,6 +68,9 @@ Deno.serve(handle(async (req) => {
   const { data: ativa } = await db.from("assinaturas").select("id")
     .eq("corretor_id", uid).eq("status", "ativa").not("stripe_subscription_id", "is", null).maybeSingle();
   if (ativa) throw new HttpError(409, "Você já tem uma assinatura ativa. Cancele antes de trocar de plano.");
+  const { data: daEquipe } = await db.from("assinaturas").select("id")
+    .eq("corretor_id", uid).eq("status", "ativa").not("equipe_id", "is", null).maybeSingle();
+  if (daEquipe) throw new HttpError(409, "Você já tem acesso pela equipe da sua imobiliária. Para assinar sozinho, saia da equipe primeiro (aba Equipe).");
 
   let customer = perfil.stripe_customer_id as string | null;
   if (!customer) {

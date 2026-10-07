@@ -353,8 +353,8 @@
   }
 
   /* ---------------- promoção de lançamento ---------------- */
-  // 30% off no 1º mês do plano mensal até 31/10/2026 23:59 (Fortaleza). O desconto real é aplicado no servidor (stripe-checkout).
-  var PROMO_FIM = new Date("2026-10-31T23:59:59-03:00");
+  // 30% off no 1º mês do plano mensal — oferta-relâmpago de 24h, até 08/10/2026 20:00 (Fortaleza). O desconto real é aplicado no servidor (stripe-checkout).
+  var PROMO_FIM = new Date("2026-10-08T20:00:00-03:00");
   var SUPORTE_EMAIL = "vitrinecorretor@gmail.com";
   function promoAtiva() { return Date.now() < PROMO_FIM.getTime(); }
   function iniciarContadoresPromo() {
@@ -1736,7 +1736,7 @@
       });
     }
 
-    var promoHtml = promoAtiva() ? '<div class="promo-plano" style="grid-column:1/-1;"><b>Oferta de lançamento:</b> 30% off no 1º mês do plano mensal — só até 31/10. <span class="promo-cd" data-countdown></span></div>' : "";
+    var promoHtml = promoAtiva() ? '<div class="promo-plano" style="grid-column:1/-1;"><b>Oferta de lançamento:</b> 30% off no 1º mês do plano mensal — só por 24 horas (até 08/10 às 20h). <span class="promo-cd" data-countdown></span></div>' : "";
     document.getElementById("plan-grid").innerHTML = promoHtml +
       '<div class="toggle-period" style="grid-column:1/-1;">' +
       '<button data-period="mensal" class="' + (planPeriod === "mensal" ? "active" : "") + '">Mensal</button>' +

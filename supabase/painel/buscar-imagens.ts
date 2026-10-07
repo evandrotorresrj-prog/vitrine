@@ -61,9 +61,21 @@ const BUSCAS_POR_HORA = 60;
 
 type Slide = { titulo?: string; corpo?: string };
 
+// fotos reais de Fortaleza-CE pra variar os carrosséis (o corretor atua lá)
+const LUGARES_FORTALEZA = [
+  "Fortaleza Beira Mar", "Fortaleza skyline", "Praia de Iracema Fortaleza", "Meireles Fortaleza",
+  "Ponte dos Ingleses Fortaleza", "Praia do Futuro Fortaleza", "Fortaleza Ceara buildings", "Fortaleza sunset beach",
+];
+const ehFortaleza = (q: string) => /fortaleza|cear[aá]|iracema|meireles|mucuripe|aldeota/i.test(q);
+// escolhe uma foto aleatória entre as boas (não sempre a 1ª) pra não repetir as mesmas imagens
+// deno-lint-ignore no-explicit-any
+function sortear<T>(lista: T[]): T | undefined { return lista.length ? lista[Math.floor(Math.random() * Math.min(lista.length, 6))] : undefined; }
+
 // pede ao Claude 1 busca curta em inglês por slide (fotos de banco de imagem respondem melhor em inglês)
 async function termosDeBusca(contexto: string, slides: Slide[]): Promise<string[]> {
-  const fallback = slides.map((s) => `${contexto} ${s.titulo ?? ""}`.trim().slice(0, 80) || "modern apartment brazil");
+  const fallback = slides.map((s, i) => i % 2 === 1
+    ? LUGARES_FORTALEZA[(i + Math.floor(Math.random() * LUGARES_FORTALEZA.length)) % LUGARES_FORTALEZA.length]
+    : (`${contexto} ${s.titulo ?? ""}`.trim().slice(0, 80) || "modern apartment brazil"));
   if (!ANTHROPIC) return fallback;
   try {
     const lista = slides.map((s, i) => `${i + 1}. ${s.titulo ?? ""} — ${(s.corpo ?? "").slice(0, 160)}`).join("\n");
@@ -80,8 +92,12 @@ Contexto: ${contexto || "mercado imobiliário"}
 Slides:
 ${lista}
 
-Para cada slide, escreva UMA busca curta em INGLÊS (2 a 5 palavras) que traga uma foto real, bonita e diretamente relacionada ao assunto do slide (ex.: "modern apartment living room", "house keys handover", "couple signing contract", "beach view balcony").
-Evite pessoas olhando pra câmera e evite qualquer coisa com texto.
+Para cada slide, escreva UMA busca curta (2 a 5 palavras) que traga uma foto real, bonita e relacionada ao assunto do slide.
+O corretor atua em FORTALEZA, CEARÁ. Diversifique: em cerca de METADE dos slides (alternando, nunca dois seguidos iguais), use fotos reais de Fortaleza,
+sempre com a palavra "Fortaleza" na busca e variando o lugar — ex.: "Fortaleza Beira Mar", "Fortaleza skyline", "Praia de Iracema Fortaleza",
+"Meireles Fortaleza", "Fortaleza Ceara buildings", "Ponte dos Ingleses Fortaleza", "Praia do Futuro Fortaleza", "Dragao do Mar Fortaleza", "Fortaleza sunset beach".
+Nos outros slides use buscas em INGLÊS ligadas ao assunto (ex.: "modern apartment living room", "house keys handover", "couple signing contract", "beach view balcony").
+Não repita a mesma busca em dois slides. Evite pessoas olhando pra câmera e evite qualquer coisa com texto.
 Responda SÓ com um array JSON de strings, na mesma ordem dos slides.`,
         }],
       }),
@@ -99,14 +115,14 @@ const base = (u: string) => (u || "").split("?")[0];
 async function buscarUnsplash(q: string, usados: Set<string>) {
   const u = new URL("https://api.unsplash.com/search/photos");
   u.searchParams.set("query", q);
-  u.searchParams.set("orientation", "portrait");
+  if (!ehFortaleza(q)) u.searchParams.set("orientation", "portrait");   // Fortaleza tem menos fotos: aceita horizontal (o recorte 4:5 é feito pela CDN)
   u.searchParams.set("content_filter", "high");
-  u.searchParams.set("per_page", "10");
+  u.searchParams.set("per_page", "20");
   const r = await fetch(u, { headers: { Authorization: `Client-ID ${UNSPLASH}`, "Accept-Version": "v1" } });
   if (!r.ok) throw new HttpError(502, "Banco de fotos indisponível (" + r.status + ").");
   const d = await r.json();
   // deno-lint-ignore no-explicit-any
-  const foto = (d.results ?? []).find((p: any) => !usados.has("u" + p.id) && !usados.has(base(p.urls.raw)) && p.width >= 1080);
+  const foto = sortear((d.results ?? []).filter((p: any) => !usados.has("u" + p.id) && !usados.has(base(p.urls.raw)) && p.width >= 1080));
   if (!foto) return null;
   usados.add("u" + foto.id);
   // regra da API do Unsplash: avisar o "download" quando a foto é escolhida pra uso
@@ -131,14 +147,14 @@ async function buscarFoto(q: string, usados: Set<string>) {
 async function buscarPexels(q: string, usados: Set<string>) {
   const u = new URL("https://api.pexels.com/v1/search");
   u.searchParams.set("query", q);
-  u.searchParams.set("orientation", "portrait");
+  if (!ehFortaleza(q)) u.searchParams.set("orientation", "portrait");
   u.searchParams.set("size", "large");          // só fotos grandes (alta resolução)
-  u.searchParams.set("per_page", "10");
+  u.searchParams.set("per_page", "20");
   const r = await fetch(u, { headers: { Authorization: PEXELS! } });
   if (!r.ok) throw new HttpError(502, "Banco de fotos indisponível (" + r.status + ").");
   const d = await r.json();
   // deno-lint-ignore no-explicit-any
-  const foto = (d.photos ?? []).find((p: any) => !usados.has("p" + p.id) && !usados.has(base(p.src.original)) && p.width >= 1080);
+  const foto = sortear((d.photos ?? []).filter((p: any) => !usados.has("p" + p.id) && !usados.has(base(p.src.original)) && p.width >= 1080));
   if (!foto) return null;
   usados.add("p" + foto.id);
   // "large2x" = ~1880px de largura, comprimida pra web; recortamos 4:5 no app
@@ -166,6 +182,7 @@ Deno.serve(handle(async (req) => {
   const imagens = [];
   for (const q of termos) {
     let foto = await buscarFoto(q, usados);
+    if (!foto && ehFortaleza(q)) foto = await buscarFoto("Fortaleza Brazil", usados);           // Fortaleza genérica
     if (!foto) foto = await buscarFoto(q.split(" ").slice(0, 2).join(" ") || "real estate", usados); // busca mais ampla
     imagens.push(foto ? { ...foto, termo: q } : null);
   }

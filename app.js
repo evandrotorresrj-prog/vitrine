@@ -344,6 +344,26 @@
     toastTimer = setTimeout(function () { el.classList.remove("show"); }, 2600);
   }
 
+  /* ---------------- promoção de lançamento ---------------- */
+  // 30% off no 1º mês do plano mensal até 31/10/2026 23:59 (Fortaleza). O desconto real é aplicado no servidor (stripe-checkout).
+  var PROMO_FIM = new Date("2026-10-31T23:59:59-03:00");
+  var SUPORTE_EMAIL = "suporte.vitrinecorretores@gmail.com";
+  function promoAtiva() { return Date.now() < PROMO_FIM.getTime(); }
+  function iniciarContadoresPromo() {
+    function tick() {
+      var ms = PROMO_FIM.getTime() - Date.now();
+      qsa("[data-promo]").forEach(function (el) { el.hidden = ms <= 0; });
+      if (ms <= 0) return;
+      var d = Math.floor(ms / 864e5), h = Math.floor(ms / 36e5) % 24, m = Math.floor(ms / 6e4) % 60, sg = Math.floor(ms / 1e3) % 60;
+      qsa("[data-countdown]").forEach(function (el) {
+        el.innerHTML = '<span><b>' + d + '</b>d</span><span><b>' + pad2(h) + '</b>h</span><span><b>' + pad2(m) + '</b>m</span><span><b>' + pad2(sg) + '</b>s</span>';
+      });
+    }
+    tick(); setInterval(tick, 1000);
+  }
+  qsa("[data-suporte]").forEach(function (a) { a.href = "mailto:" + SUPORTE_EMAIL; if (!a.textContent.trim()) a.textContent = SUPORTE_EMAIL; });
+  iniciarContadoresPromo();
+
   /* ---------------- fontes das postagens ---------------- */
   // cada carrossel guarda a fonte escolhida (coluna carrosseis.fonte); o mesmo par vale pra prévia, JPEG e vídeo
   var FONTES = {
@@ -999,7 +1019,10 @@
     return { step: 1, subjectMode: "topic", propertyId: null, topicId: null, customTopic: "", customCategoria: "Dicas", slides: null, templateSlug: "minimalista", fonte: "moderna", dest: "rascunho", customPrompt: "" };
   }
   var wizard = freshWizard();
-  function resetWizard() { wizard = freshWizard(); }
+  function resetWizard() {
+    wizard = freshWizard(); cal = null;
+    var d = document.getElementById("sched-date"); if (d) d.value = "";
+  }
 
   // svg puro (usado como base/fallback, ex. spotlight do passo 1-2, onde a foto real ainda não importa)
   function wizardArtSvg() {
@@ -1275,11 +1298,65 @@
       el.addEventListener("click", function () { wizard.dest = el.dataset.dest; renderDestStep(); });
     });
     document.getElementById("schedule-box").hidden = wizard.dest !== "agendado";
-    if (wizard.dest === "agendado" && !document.getElementById("sched-date").value) {
-      document.getElementById("sched-date").value = addDays(2).toISOString().slice(0, 10);
-    }
+    if (wizard.dest === "agendado") renderCalendario();
     var igOn = state.igConta && state.igConta.status === "ativo";
     document.getElementById("ig-warn").hidden = !(wizard.dest === "publicado" && !igOn);
+  }
+
+  /* ---------- calendário de agendamento (dia + hora) ---------- */
+  var MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+  var DIAS_SEM = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+  var HORARIOS_TOP = ["12:00", "18:00", "19:00", "20:00"];   // picos de engajamento no Instagram
+  var cal = null;
+  function pad2(n) { return (n < 10 ? "0" : "") + n; }
+  function ymd(d) { return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()); }
+  function renderCalendario() {
+    var inD = document.getElementById("sched-date"), inT = document.getElementById("sched-time");
+    var agora = new Date();
+    if (!inD.value) { var d0 = addDays(1); inD.value = ymd(d0); }
+    if (!inT.value) inT.value = "18:00";
+    var sel = new Date(inD.value + "T00:00:00");
+    if (!cal) cal = { ano: sel.getFullYear(), mes: sel.getMonth() };
+    var primeiro = new Date(cal.ano, cal.mes, 1), diasNoMes = new Date(cal.ano, cal.mes + 1, 0).getDate();
+    var hojeStr = ymd(agora), limite = addDays(90);
+    var podeVoltar = cal.ano > agora.getFullYear() || cal.mes > agora.getMonth();
+    var podeAvancar = new Date(cal.ano, cal.mes + 1, 1) <= limite;
+    var dias = "";
+    for (var v = 0; v < primeiro.getDay(); v++) dias += '<button type="button" class="cal-day vazio" disabled></button>';
+    for (var dia = 1; dia <= diasNoMes; dia++) {
+      var dt = new Date(cal.ano, cal.mes, dia), str = ymd(dt);
+      var passado = str < hojeStr || dt > limite;
+      dias += '<button type="button" class="cal-day' + (str === hojeStr ? " hoje" : "") + (str === inD.value ? " on" : "") + '" data-dia="' + str + '"' + (passado ? " disabled" : "") + ">" + dia + "</button>";
+    }
+    var slots = "";
+    for (var h = 7; h <= 22; h++) {
+      ["00", "30"].forEach(function (m) {
+        var t = pad2(h) + ":" + m;
+        var passouHoje = inD.value === hojeStr && new Date(inD.value + "T" + t) <= new Date(agora.getTime() + 10 * 60000);
+        slots += '<button type="button" class="cal-slot' + (HORARIOS_TOP.indexOf(t) >= 0 ? " top" : "") + (t === inT.value ? " on" : "") + '" data-hora="' + t + '"' + (passouHoje ? " disabled" : "") + ">" + t + "</button>";
+      });
+    }
+    var quando = new Date(inD.value + "T" + inT.value);
+    var resumo = DIAS_SEM[quando.getDay()] + ", " + quando.getDate() + " de " + MESES[quando.getMonth()] + " às " + inT.value;
+    document.getElementById("sched-cal").innerHTML =
+      '<div><div class="cal-head"><button type="button" class="cal-nav" id="cal-prev"' + (podeVoltar ? "" : " disabled") + ' aria-label="Mês anterior">‹</button>' +
+      "<b>" + MESES[cal.mes] + " " + cal.ano + '</b><button type="button" class="cal-nav" id="cal-next"' + (podeAvancar ? "" : " disabled") + ' aria-label="Próximo mês">›</button></div>' +
+      '<div class="cal-grid">' + DIAS_SEM.map(function (d) { return '<div class="cal-dow">' + d + "</div>"; }).join("") + dias + "</div></div>" +
+      '<div class="cal-times"><h4>Horário</h4><div class="cal-slots">' + slots + '</div><div class="cal-legenda"><i></i> horários de mais engajamento</div></div>' +
+      '<div class="cal-resumo">' + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>' +
+      "<span>Agendado para <b>" + resumo + "</b></span></div>";
+    var box = document.getElementById("sched-cal");
+    qsa("[data-dia]", box).forEach(function (b) { b.onclick = function () {
+      inD.value = b.dataset.dia;
+      // se escolheu hoje e o horário já passou, pula pro próximo horário livre
+      if (inD.value === hojeStr && new Date(inD.value + "T" + inT.value) <= agora) {
+        var prox = new Date(agora.getTime() + 40 * 60000); inT.value = pad2(prox.getHours()) + ":" + (prox.getMinutes() < 30 ? "30" : "00");
+        if (prox.getMinutes() >= 30) inT.value = pad2(Math.min(22, prox.getHours() + 1)) + ":00";
+      }
+      renderCalendario(); }; });
+    qsa("[data-hora]", box).forEach(function (b) { b.onclick = function () { inT.value = b.dataset.hora; renderCalendario(); }; });
+    document.getElementById("cal-prev").onclick = function () { cal.mes--; if (cal.mes < 0) { cal.mes = 11; cal.ano--; } renderCalendario(); };
+    document.getElementById("cal-next").onclick = function () { cal.mes++; if (cal.mes > 11) { cal.mes = 0; cal.ano++; } renderCalendario(); };
   }
 
   async function onWizNext() {
@@ -1317,6 +1394,7 @@
     if (wizard.dest === "agendado") {
       var date = document.getElementById("sched-date").value, time = document.getElementById("sched-time").value || "09:00";
       if (!date) { toast("Escolha a data da publicação."); return; }
+      if (new Date(date + "T" + time) <= new Date()) { toast("Esse horário já passou — escolha outro no calendário."); return; }
       payload.data_agendada = new Date(date + "T" + time).toISOString();
     } else if (wizard.dest === "publicado") {
       payload.data_publicada = new Date().toISOString();
@@ -1525,7 +1603,8 @@
       });
     }
 
-    document.getElementById("plan-grid").innerHTML =
+    var promoHtml = promoAtiva() ? '<div class="promo-plano" style="grid-column:1/-1;"><b>Oferta de lançamento:</b> 30% off no 1º mês do plano mensal — só até 31/10. <span class="promo-cd" data-countdown></span></div>' : "";
+    document.getElementById("plan-grid").innerHTML = promoHtml +
       '<div class="toggle-period" style="grid-column:1/-1;">' +
       '<button data-period="mensal" class="' + (planPeriod === "mensal" ? "active" : "") + '">Mensal</button>' +
       '<button data-period="anual" class="' + (planPeriod === "anual" ? "active" : "") + '">Anual · 2 meses grátis</button>' +

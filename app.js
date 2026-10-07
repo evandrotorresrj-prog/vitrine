@@ -353,8 +353,8 @@
   }
 
   /* ---------------- promoção de lançamento ---------------- */
-  // 30% off no 1º mês do plano mensal até 31/10/2026 23:59 (Fortaleza). O desconto real é aplicado no servidor (stripe-checkout).
-  var PROMO_FIM = new Date("2026-10-31T23:59:59-03:00");
+  // 30% off no 1º mês do plano mensal — oferta-relâmpago de 24h, até 08/10/2026 20:00 (Fortaleza). O desconto real é aplicado no servidor (stripe-checkout).
+  var PROMO_FIM = new Date("2026-10-08T20:00:00-03:00");
   var SUPORTE_EMAIL = "vitrinecorretor@gmail.com";
   function promoAtiva() { return Date.now() < PROMO_FIM.getTime(); }
   function iniciarContadoresPromo() {
@@ -362,9 +362,10 @@
       var ms = PROMO_FIM.getTime() - Date.now();
       qsa("[data-promo]").forEach(function (el) { el.hidden = ms <= 0; });
       if (ms <= 0) return;
-      var d = Math.floor(ms / 864e5), h = Math.floor(ms / 36e5) % 24, m = Math.floor(ms / 6e4) % 60, sg = Math.floor(ms / 1e3) % 60;
+      // contagem em HORAS corridas (sem dias): ex. 585h 12m 30s
+      var h = Math.floor(ms / 36e5), m = Math.floor(ms / 6e4) % 60, sg = Math.floor(ms / 1e3) % 60;
       qsa("[data-countdown]").forEach(function (el) {
-        el.innerHTML = '<span><b>' + d + '</b>d</span><span><b>' + pad2(h) + '</b>h</span><span><b>' + pad2(m) + '</b>m</span><span><b>' + pad2(sg) + '</b>s</span>';
+        el.innerHTML = '<span><b>' + h + '</b>h</span><span><b>' + pad2(m) + '</b>m</span><span><b>' + pad2(sg) + '</b>s</span>';
       });
     }
     tick(); setInterval(tick, 1000);
@@ -1735,7 +1736,7 @@
       });
     }
 
-    var promoHtml = promoAtiva() ? '<div class="promo-plano" style="grid-column:1/-1;"><b>Oferta de lançamento:</b> 30% off no 1º mês do plano mensal — só até 31/10. <span class="promo-cd" data-countdown></span></div>' : "";
+    var promoHtml = promoAtiva() ? '<div class="promo-plano" style="grid-column:1/-1;"><b>Oferta de lançamento:</b> 30% off no 1º mês do plano mensal — só por 24 horas (até 08/10 às 20h). <span class="promo-cd" data-countdown></span></div>' : "";
     document.getElementById("plan-grid").innerHTML = promoHtml +
       '<div class="toggle-period" style="grid-column:1/-1;">' +
       '<button data-period="mensal" class="' + (planPeriod === "mensal" ? "active" : "") + '">Mensal</button>' +
@@ -1828,6 +1829,7 @@
     });
     document.getElementById("overlay").addEventListener("click", function (e) { if (e.target.id === "overlay") closeModal(); });
     document.getElementById("logout-btn").addEventListener("click", async function () {
+      if (!window.confirm("Sair da sua conta na Vitrine?")) return;
       await Auth.signOut();
       document.getElementById("app-view").hidden = true;
       authMode = "login";

@@ -19,6 +19,10 @@
   // (src="...", value="...", data-*="..."), não só entre tags — sem isso um valor com aspas
   // quebraria o atributo e permitiria injetar HTML/JS (XSS). Ver revisão de segurança de 09/09/2026.
   function escapeHtml(s) { return (s == null ? "" : String(s)).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;"); }
+  // só aceita links http(s) — bloqueia "javascript:", "data:" etc. em href/src vindos do banco ou de APIs
+  function safeUrl(u) { try { var x = new URL(String(u || ""), location.href); return (x.protocol === "https:" || x.protocol === "http:") ? x.href : ""; } catch (e) { return ""; } }
+  // redireciona só pra hosts conhecidos (Stripe Checkout, Instagram OAuth)
+  function irPara(u, hostsOk) { var x = safeUrl(u); var h = x ? new URL(x).hostname : ""; if (!x || hostsOk.indexOf(h) < 0 || x.indexOf("https:") !== 0) throw new Error("Endereço de redirecionamento inválido."); window.location.href = x; }
   function qs(sel, root) { return (root || document).querySelector(sel); }
   function qsa(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
 
@@ -64,7 +68,8 @@
     var id = "img" + Math.random().toString(36).slice(2, 9);
     window.__vitrineFallback = window.__vitrineFallback || {};
     window.__vitrineFallback[id] = fallbackSvg;
-    return '<img src="' + url + '" alt="" loading="lazy" onerror="var h=window.__vitrineFallback[\'' + id + '\']; if(h){ this.outerHTML = h; }">';
+    // sem onerror inline (permite CSP sem 'unsafe-inline'); o fallback é tratado por um listener global de "error"
+    return '<img src="' + escapeHtml(safeUrl(url)) + '" alt="" loading="lazy" data-fb="' + id + '">';
   }
   function pollinationsUrl(prompt, w, h) {
     return "https://image.pollinations.ai/prompt/" + encodeURIComponent(prompt) + "?width=" + (w || 480) + "&height=" + (h || 600) + "&nologo=true";
@@ -98,6 +103,7 @@
     if (!slide.id) return;
     try { await DB.update("slides", "id=eq." + slide.id, { imagem_url: slide.imagem_url, imagem_prompt: slide.imagem_prompt }); } catch (e) { }
   }
+  function igLink(u) { var x = safeUrl(u); return /^https:\/\/(www\.)?instagram\.com\//.test(x) ? x : ""; }
   function creditoDe(slide) {
     if (!isFotoReal(slide.imagem_url)) return null;
     var partes = String(slide.imagem_prompt || "").split("||");
@@ -108,7 +114,8 @@
   function fotoControlsHtml(slides) {
     return '<div class="fotos-ctl">' + slides.map(function (s, i) {
       var cr = creditoDe(s);
-      var credHtml = cr ? (cr.link ? '<a href="' + escapeHtml(cr.link) + '" target="_blank" rel="noopener">' + escapeHtml(cr.texto) + '</a>' : escapeHtml(cr.texto)) : '<span class="sem">sem foto</span>';
+      var crLink = cr ? safeUrl(cr.link) : "";
+      var credHtml = cr ? (crLink ? '<a href="' + escapeHtml(crLink) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(cr.texto) + '</a>' : escapeHtml(cr.texto)) : '<span class="sem">sem foto</span>';
       return '<div class="foto-ctl"><div class="foto-top"><span class="mono">' + (i + 1) + '</span><span class="cred">' + credHtml + '</span></div>' +
         '<div class="foto-btns">' +
         '<button type="button" class="btn btn-ghost btn-xs" data-foto-trocar="' + i + '">Trocar</button>' +
@@ -144,6 +151,7 @@
       inp.onchange = async function () {
         var f = inp.files && inp.files[0]; if (!f) return;
         if (f.size > 15 * 1024 * 1024) { toast("Foto muito grande (máx. 15 MB)."); return; }
+        if (["image/jpeg", "image/png", "image/webp"].indexOf(f.type) < 0) { toast("Envie a foto em JPG, PNG ou WEBP."); return; }
         try {
           toast("Enviando sua foto…");
           var ext = (f.type.split("/")[1] || "jpg").replace("jpeg", "jpg");
@@ -329,7 +337,7 @@
     // imagem_url passa por escapeHtml() porque é um valor gravado no banco (RLS permite o dono escrever nos próprios
     // slides) e vai direto num atributo HTML — sem isso, um valor malicioso ali quebraria o atributo (XSS).
     var capa = c.slides && c.slides[0];
-    if (capa && isFotoReal(capa.imagem_url)) meta.art = imgWithFallback(escapeHtml(capa.imagem_url), meta.art);
+    if (capa && isFotoReal(capa.imagem_url)) meta.art = imgWithFallback(capa.imagem_url, meta.art);
     return meta;
   }
 
@@ -391,7 +399,7 @@
   function slideTile(slide, tplSlug, mini, index, total, art, fonte) {
     // imagem relacionada sempre por baixo do texto (fundo do slide inteiro), com o SVG/cor do template como fallback
     var foto = mini ? null : slideImageUrl(slide);
-    var artHtml = foto ? '<div class="tile-bg">' + imgWithFallback(escapeHtml(foto), "") + '</div>' : "";
+    var artHtml = foto ? '<div class="tile-bg">' + imgWithFallback(foto, "") + '</div>' : "";
     return '<div class="slide-tile fnt-' + fonteDe(fonte) + ' ' + (mini ? "mini " : "") + (foto ? "has-bg " : "") + 'tpl-' + (tplSlug || "minimalista") + '">' + artHtml +
       '<div class="stag">' + escapeHtml(slide.tag || "") + '</div>' +
       '<div class="stitle">' + escapeHtml(slide.titulo) + '</div>' +
@@ -864,14 +872,14 @@
     var pillCls = c.status === "publicado" ? "pill-publicado" : c.status === "agendado" ? "pill-agendado" : "pill-draft";
     var igOk = state.igConta && state.igConta.status === "ativo";
     var extra = c.status === "publicado"
-      ? (c.instagram_permalink ? '<a class="btn btn-ghost btn-sm" href="' + escapeHtml(c.instagram_permalink) + '" target="_blank" rel="noopener">' + ICONS.ig + ' Ver no Instagram</a>' : "")
+      ? (igLink(c.instagram_permalink) ? '<a class="btn btn-ghost btn-sm" href="' + escapeHtml(igLink(c.instagram_permalink)) + '" target="_blank" rel="noopener noreferrer">' + ICONS.ig + ' Ver no Instagram</a>' : "")
       : '<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">' +
         '<button class="btn btn-ghost btn-sm" id="preview-ig">' + ICONS.eye + ' Ver como fica</button>' +
         (c.status === "agendado" ? '<button class="btn btn-ghost btn-sm" id="mark-published">' + ICONS.check + ' Marcar como publicado</button>' : "") +
         '<button class="btn btn-primary btn-sm" id="publish-ig"' + (igOk ? "" : ' title="Conecte o Instagram na aba Instagram"') + '>' + ICONS.ig + ' Publicar no Instagram</button></div>';
     document.getElementById("modal-body").innerHTML =
       '<div class="modal-head"><div><h3 style="font-size:19px;">' + escapeHtml(meta.titulo) + '</h3>' +
-      '<span class="pill ' + pillCls + '" style="margin-top:6px;">' + c.status + '</span></div>' +
+      '<span class="pill ' + pillCls + '" style="margin-top:6px;">' + escapeHtml(c.status) + '</span></div>' +
       '<button class="modal-close" id="modal-close">' + ICONS.close + '</button></div>' +
       '<div class="carousel-strip">' + slideStrip(c.slides, tpl && tpl.slug, false, meta.art, c.fonte) + '</div>' +
       (c.status !== "publicado" ? '<div id="modal-fontes">' + fontPickerHtml(c.fonte) + '</div>' : "") +
@@ -925,19 +933,28 @@
     return s;
   }
 
+  function fotosDe(p) {
+    return (p && Array.isArray(p.fotos) ? p.fotos : []).map(function (f) {
+      var u = typeof f === "string" ? f : (f && f.url) || "";
+      return /^https:\/\//.test(u) ? safeUrl(u) : "";
+    }).filter(Boolean);
+  }
   function propCardHtml(p) {
+    var fotos = fotosDe(p);
     var specs = p.tipo === "terreno"
       ? '<span>' + ICONS.ruler + (p.area_m2 || 0) + ' m²</span>'
       : '<span>' + ICONS.ruler + (p.area_m2 || 0) + ' m²</span><span>' + ICONS.bed + (p.quartos || 0) + ' qts</span><span>' + ICONS.car + (p.vagas || 0) + ' vg</span>';
     return '<div class="prop-card">' +
-      '<div class="prop-cover">' + propCoverSvg(p.tipo) + '<span class="tag">' + escapeHtml(p.tipo) + '</span></div>' +
+      '<div class="prop-cover' + (fotos.length ? " has-foto" : "") + '">' + (fotos.length ? imgWithFallback(fotos[0], propCoverSvg(p.tipo)) : propCoverSvg(p.tipo)) + '<span class="tag">' + escapeHtml(p.tipo) + '</span>' + (fotos.length ? '<span class="prop-nfotos">' + fotos.length + ' foto' + (fotos.length > 1 ? "s" : "") + '</span>' : "") + '</div>' +
       '<div class="prop-body">' +
       '<h3>' + escapeHtml(p.titulo) + '</h3>' +
       '<div class="prop-addr">' + escapeHtml(p.bairro || "") + ' · ' + escapeHtml(p.cidade || "") + '</div>' +
       '<div class="prop-specs">' + specs + '</div>' +
       '<div class="prop-price">' + fmtBRL(p.preco) + (p.finalidade === "aluguel" ? " /mês" : "") + '</div>' +
       '</div>' +
-      '<div class="prop-foot"><button class="btn btn-primary" data-create="' + p.id + '">' + ICONS.wand + ' Criar carrossel</button></div>' +
+      '<div class="prop-foot"><button class="btn btn-primary" data-create="' + escapeHtml(p.id) + '">' + ICONS.wand + ' Criar carrossel</button>' +
+      '<div class="prop-acts"><button class="btn btn-ghost btn-sm" data-prop-fotos="' + escapeHtml(p.id) + '">Fotos</button>' +
+      '<button class="btn btn-ghost btn-sm btn-danger" data-prop-del="' + escapeHtml(p.id) + '">Excluir</button></div></div>' +
       '</div>';
   }
   function renderImoveis() {
@@ -954,7 +971,85 @@
         renderWizard();
       });
     });
+    qsa("[data-prop-fotos]").forEach(function (b) { b.addEventListener("click", function () { openFotosImovel(b.dataset.propFotos); }); });
+    qsa("[data-prop-del]").forEach(function (b) {
+      b.addEventListener("click", async function () {
+        var p = findProp(b.dataset.propDel); if (!p) return;
+        if (!window.confirm('Excluir o imóvel "' + (p.titulo || "") + '"? Os carrosséis já criados continuam salvos.')) return;
+        b.disabled = true;
+        try {
+          // solta os carrosséis desse imóvel antes (eles continuam existindo), depois apaga o imóvel
+          await DB.rest("carrosseis?propriedade_id=eq." + encodeURIComponent(p.id), { method: "PATCH", body: JSON.stringify({ propriedade_id: null }), headers: { Prefer: "return=minimal" } });
+          await DB.del("propriedades", "id=eq." + encodeURIComponent(p.id));
+          state.propriedades = state.propriedades.filter(function (x) { return x.id !== p.id; });
+          renderImoveis();
+          toast("Imóvel excluído.");
+        } catch (e) { b.disabled = false; toast("Não consegui excluir: " + e.message); }
+      });
+    });
     document.getElementById("add-prop").addEventListener("click", openAddPropertyModal);
+  }
+
+  // fotos do imóvel: até 10, JPG/PNG/WEBP, guardadas na pasta do próprio corretor no Storage
+  var MAX_FOTOS_IMOVEL = 10;
+  async function enviarFotosImovel(p, files) {
+    var atuais = fotosDe(p);
+    var lista = Array.prototype.slice.call(files || []);
+    var livres = Math.max(MAX_FOTOS_IMOVEL - atuais.length, 0);
+    if (lista.length > livres) { toast("Máximo de " + MAX_FOTOS_IMOVEL + " fotos por imóvel — enviando só " + livres + "."); lista = lista.slice(0, livres); }
+    var novas = [];
+    for (var i = 0; i < lista.length; i++) {
+      var f = lista[i];
+      if (["image/jpeg", "image/png", "image/webp"].indexOf(f.type) < 0) { toast(f.name + ": envie JPG, PNG ou WEBP."); continue; }
+      if (f.size > 15 * 1024 * 1024) { toast(f.name + ": foto muito grande (máx. 15 MB)."); continue; }
+      var ext = f.type.split("/")[1].replace("jpeg", "jpg");
+      novas.push(await uploadArquivo(f, state.profile.id + "/imoveis/" + p.id + "/" + Date.now() + "-" + i + "." + ext, f.type));
+    }
+    if (!novas.length) return;
+    var fotos = atuais.concat(novas);
+    await DB.update("propriedades", "id=eq." + encodeURIComponent(p.id), { fotos: fotos });
+    p.fotos = fotos;
+  }
+  async function salvarOrdemFotos(p, fotos) {
+    await DB.update("propriedades", "id=eq." + encodeURIComponent(p.id), { fotos: fotos });
+    p.fotos = fotos;
+  }
+  function openFotosImovel(id) {
+    var p = findProp(id); if (!p) return;
+    function desenhar() {
+      var fotos = fotosDe(p);
+      var body = document.getElementById("modal-body");
+      body.innerHTML =
+        '<div class="modal-head"><div><h3 style="font-size:19px;">Fotos do imóvel</h3><p class="imv-sub">' + escapeHtml(p.titulo) + ' · ' + fotos.length + '/' + MAX_FOTOS_IMOVEL + ' — a 1ª é a capa, e elas entram nos carrosséis desse imóvel</p></div><button class="modal-close" id="modal-close">' + ICONS.close + '</button></div>' +
+        '<div class="imv-fotos">' + fotos.map(function (u, i) {
+          return '<div class="imv-foto">' + imgWithFallback(u, "") +
+            (i === 0 ? '<span class="imv-capa">Capa</span>' : '<button type="button" class="imv-capa-btn" data-capa="' + i + '">Usar como capa</button>') +
+            '<button type="button" class="imv-rm" data-rm="' + i + '" title="Remover foto">' + ICONS.close + '</button></div>';
+        }).join("") +
+        (fotos.length < MAX_FOTOS_IMOVEL ? '<label class="imv-add">' + ICONS.plus + '<span>Adicionar fotos</span><input type="file" id="imv-input" accept="image/jpeg,image/png,image/webp" multiple hidden></label>' : "") +
+        '</div>';
+      document.getElementById("modal-close").addEventListener("click", function () { closeModal(); renderImoveis(); });
+      var inp = document.getElementById("imv-input");
+      if (inp) inp.addEventListener("change", async function () {
+        toast("Enviando fotos…");
+        try { await enviarFotosImovel(p, inp.files); toast("Fotos salvas."); } catch (e) { toast("Erro ao enviar: " + e.message); }
+        desenhar();
+      });
+      qsa("[data-rm]", body).forEach(function (b) {
+        b.addEventListener("click", async function () {
+          var f2 = fotosDe(p); f2.splice(+b.dataset.rm, 1);
+          try { await salvarOrdemFotos(p, f2); desenhar(); } catch (e) { toast("Erro: " + e.message); }
+        });
+      });
+      qsa("[data-capa]", body).forEach(function (b) {
+        b.addEventListener("click", async function () {
+          var f2 = fotosDe(p); var f = f2.splice(+b.dataset.capa, 1)[0]; f2.unshift(f);
+          try { await salvarOrdemFotos(p, f2); desenhar(); } catch (e) { toast("Erro: " + e.message); }
+        });
+      });
+    }
+    desenhar();
+    document.getElementById("overlay").hidden = false;
   }
 
   function openAddPropertyModal() {
@@ -971,6 +1066,7 @@
       '<label>Quartos<input type="number" id="np-quartos" value="0"></label>' +
       '<label>Vagas<input type="number" id="np-vagas" value="0"></label>' +
       '<label class="full">Diferenciais (separe por vírgula)<textarea id="np-dif" rows="2" placeholder="Vista para o mar, Reformado, Aceita permuta"></textarea></label>' +
+      '<label class="full">Fotos do imóvel (opcional, até 10 — JPG, PNG ou WEBP)<input type="file" id="np-fotos" accept="image/jpeg,image/png,image/webp" multiple></label>' +
       '</div>' +
       '<div style="display:flex; justify-content:flex-end; gap:10px; margin-top:16px;">' +
       '<button class="btn btn-ghost" id="np-cancel">Cancelar</button>' +
@@ -1004,6 +1100,11 @@
       try {
         var rows = await DB.insert("propriedades", payload);
         state.propriedades.push(rows[0]);
+        var arqs = document.getElementById("np-fotos").files;
+        if (arqs && arqs.length) {
+          btn.textContent = "Enviando fotos…";
+          try { await enviarFotosImovel(rows[0], arqs); } catch (e2) { toast("Imóvel salvo, mas as fotos falharam: " + e2.message); }
+        }
         closeModal(); renderImoveis();
         toast("Imóvel adicionado.");
       } catch (err) {
@@ -1246,7 +1347,7 @@
     try {
       var origem = wizard.subjectMode === "property" ? "imovel" : wizard.subjectMode === "topic" ? "topico" : "custom";
       var dados;
-      if (origem === "imovel") dados = findProp(wizard.propertyId);
+      if (origem === "imovel") { dados = Object.assign({}, findProp(wizard.propertyId)); delete dados.fotos; }
       else if (origem === "topico") dados = findTopic(wizard.topicId);
       else dados = { assunto: wizard.customTopic.trim(), categoria: wizard.customCategoria };
 
@@ -1254,6 +1355,11 @@
       wizard.slides = resp.slides || [];
       if (!wizard.slides.length) throw new Error("A IA não retornou slides. Tente gerar de novo.");
       area.querySelector(".gen-empty p").textContent = "Texto pronto. Buscando fotos reais em alta resolução pra cada slide…";
+      // imóvel com fotos próprias: usa as fotos do corretor nos slides (na ordem), o resto vem do banco de fotos
+      if (origem === "imovel") {
+        var fotosImovel = fotosDe(findProp(wizard.propertyId));
+        wizard.slides.forEach(function (sl, i) { if (fotosImovel[i]) aplicarFoto(sl, { url: fotosImovel[i], credito: "Foto do imóvel", link: "" }); });
+      }
       try { await garantirFotosReais(wizard.slides, wizardContexto(), false); }
       catch (e) { toast("Fotos não encontradas agora (" + e.message + ") — dá pra tentar de novo na prévia."); }
       renderGenArea();
@@ -1531,7 +1637,7 @@
         } else {
           // abre o login do Instagram; ele volta pra Edge Function, que salva o token e redireciona pra cá
           var resp = await callFunction("instagram-oauth-callback", { acao: "iniciar" });
-          window.location.href = resp.url;
+          irPara(resp.url, ["www.instagram.com", "api.instagram.com", "instagram.com"]);
         }
       } catch (err) { toast("Erro: " + err.message); }
     });
@@ -1646,7 +1752,7 @@
       try {
         // a ativação do plano acontece só no servidor, pelo webhook do Stripe, depois do pagamento confirmado
         var resp = await callFunction("stripe-checkout", { plano_id: plano.id, periodo: planPeriod });
-        window.location.href = resp.url;
+        irPara(resp.url, ["checkout.stripe.com"]);
       } catch (err) {
         toast("Erro: " + err.message);
         btn.disabled = false; btn.textContent = "Ir para o pagamento";
@@ -1757,6 +1863,18 @@
     renderAuthView();
     window.scrollTo(0, 0); document.body.scrollTop = 0; document.documentElement.scrollTop = 0;
   }
+
+  // anti-clickjacking: o GitHub Pages não deixa mandar X-Frame-Options, então o app se recusa a rodar dentro de iframe de outro site
+  if (window.top !== window.self) { try { window.top.location = window.self.location.href; } catch (e) { document.documentElement.innerHTML = ""; } }
+
+  // fallback de imagem quebrada (substitui o antigo onerror inline)
+  document.addEventListener("error", function (e) {
+    var t = e.target;
+    if (t && t.tagName === "IMG" && t.dataset && t.dataset.fb) {
+      var h = (window.__vitrineFallback || {})[t.dataset.fb];
+      if (h) t.outerHTML = h; else t.remove();
+    }
+  }, true);
 
   async function bootApp() {
     document.getElementById("landing-view").hidden = true;

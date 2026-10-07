@@ -5,11 +5,12 @@
 // Unsplash (principal) e Pexels (reserva, se houver chave). Guardamos o nome do fotógrafo como crédito.
 // A IA (Claude) só escolhe as palavras de busca de cada slide.
 // Secrets: UNSPLASH_ACCESS_KEY (grátis em unsplash.com/developers) e/ou PEXELS_API_KEY; ANTHROPIC_API_KEY (já existe)
-import { handle, HttpError, json, requireUser } from "../_shared/util.ts";
+import { admin, handle, HttpError, json, requireUser } from "../_shared/util.ts";
 
 const UNSPLASH = Deno.env.get("UNSPLASH_ACCESS_KEY");
 const PEXELS = Deno.env.get("PEXELS_API_KEY");
 const ANTHROPIC = Deno.env.get("ANTHROPIC_API_KEY");
+const BUSCAS_POR_HORA = 60;
 
 type Slide = { titulo?: string; corpo?: string };
 
@@ -98,7 +99,15 @@ async function buscarPexels(q: string, usados: Set<string>) {
 }
 
 Deno.serve(handle(async (req) => {
-  await requireUser(req);
+  const uid = await requireUser(req);
+  // segurança/custo: só quem tem teste grátis ou plano ativo, e no máximo BUSCAS_POR_HORA chamadas por hora
+  const db = admin();
+  const { data: plano } = await db.from("assinaturas").select("status").eq("corretor_id", uid).in("status", ["trial", "ativa"]).maybeSingle();
+  if (!plano) throw new HttpError(402, "Você não tem um plano ativo.");
+  const umaHora = new Date(Date.now() - 3_600_000).toISOString();
+  const { count } = await db.from("buscas_imagens_log").select("id", { count: "exact", head: true }).eq("corretor_id", uid).gte("created_at", umaHora);
+  if ((count ?? 0) >= BUSCAS_POR_HORA) throw new HttpError(429, "Muitas buscas de foto em pouco tempo. Espere um pouco e tente de novo.");
+  await db.from("buscas_imagens_log").insert({ corretor_id: uid });
   if (!UNSPLASH && !PEXELS) throw new HttpError(500, "Chave do banco de fotos (UNSPLASH_ACCESS_KEY) não configurada no servidor.");
   const { contexto = "", slides, termos: termosDoCorretor, excluir = [] } = await req.json();
   if (!Array.isArray(slides) || !slides.length || slides.length > 10) throw new HttpError(400, "Envie de 1 a 10 slides.");

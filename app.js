@@ -1829,6 +1829,7 @@
     });
     document.getElementById("overlay").addEventListener("click", function (e) { if (e.target.id === "overlay") closeModal(); });
     document.getElementById("logout-btn").addEventListener("click", async function () {
+      if (!window.confirm("Sair da sua conta na Vitrine?")) return;
       await Auth.signOut();
       document.getElementById("app-view").hidden = true;
       authMode = "login";

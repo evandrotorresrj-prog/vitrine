@@ -429,7 +429,10 @@ body .auth-card{padding:22px;}
   .lp-foot-links{display:flex; gap:18px; align-items:center; flex-wrap:wrap;}
   .sidebar-suporte{display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:9px; color:var(--ink-muted); text-decoration:none; font-size:13.5px; font-weight:600; margin-top:auto;}
   .sidebar-suporte svg{width:17px; height:17px;} .sidebar-suporte:hover{background:var(--surface-2); color:#fff;}
-  .sidebar-suporte + .sidebar-foot{margin-top:0;}
+  .sidebar-suporte + .sidebar-foot, .sidebar-sair + .sidebar-foot{margin-top:0;}
+  .sidebar-sair{margin-top:-22px; background:none; border:none; width:100%; cursor:pointer; font-family:inherit; text-align:left;}
+  .sidebar-sair:hover{color:#ff9aab !important; background:rgba(255,122,144,0.1) !important;}
+  .who-role-txt{font-size:11px; color:var(--ink-faint);}
   @media (max-width: 480px){ .promo-bar{font-size:12.5px;} }
   /* imagem relacionada por baixo de todo slide */
   .slide-tile.has-bg{color:#fff;}
@@ -560,7 +563,7 @@ body .auth-card{padding:22px;}
   @media (max-width: 880px){
     .stat-row, .kanban, .tpl-grid, .dest-grid{grid-template-columns:1fr 1fr;}
     .sidebar{width:74px;}
-    .brand-name, .brand-sub, .navitem span.label, .who-name, .who-role{display:none;}
+    .brand-name, .brand-sub, .navitem span.label, .who-name, .who-role, .who-role-txt, .sidebar-suporte .label{display:none;}
     .navitem{justify-content:center;}
     .sidebar-foot{justify-content:center;}
   }
@@ -710,11 +713,12 @@ body .auth-card{padding:22px;}
       </nav>
 
       <a class="sidebar-suporte" data-suporte-link href="mailto:vitrinecorretor@gmail.com"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg><span class="label">Suporte</span></a>
+      <button type="button" class="sidebar-suporte sidebar-sair" id="logout-btn" title="Sair da conta"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg><span class="label">Sair</span></button>
       <div class="sidebar-foot">
         <div class="avatar" id="sidebar-avatar">·</div>
         <div>
           <div class="who-name" id="sidebar-name">—</div>
-          <button class="who-role" id="logout-btn">Sair</button>
+          <div class="who-role-txt">conectado</div>
         </div>
       </div>
     </aside>

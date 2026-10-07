@@ -362,9 +362,10 @@
       var ms = PROMO_FIM.getTime() - Date.now();
       qsa("[data-promo]").forEach(function (el) { el.hidden = ms <= 0; });
       if (ms <= 0) return;
-      var d = Math.floor(ms / 864e5), h = Math.floor(ms / 36e5) % 24, m = Math.floor(ms / 6e4) % 60, sg = Math.floor(ms / 1e3) % 60;
+      // contagem em HORAS corridas (sem dias): ex. 585h 12m 30s
+      var h = Math.floor(ms / 36e5), m = Math.floor(ms / 6e4) % 60, sg = Math.floor(ms / 1e3) % 60;
       qsa("[data-countdown]").forEach(function (el) {
-        el.innerHTML = '<span><b>' + d + '</b>d</span><span><b>' + pad2(h) + '</b>h</span><span><b>' + pad2(m) + '</b>m</span><span><b>' + pad2(sg) + '</b>s</span>';
+        el.innerHTML = '<span><b>' + h + '</b>h</span><span><b>' + pad2(m) + '</b>m</span><span><b>' + pad2(sg) + '</b>s</span>';
       });
     }
     tick(); setInterval(tick, 1000);

@@ -39,7 +39,7 @@ export function handle(fn: (req: Request) => Promise<Response>) {
     catch (e) {
       const status = e instanceof HttpError ? e.status : 500;
       console.error(e);
-      return json({ error: (e as Error).message ?? "Erro interno." }, status);
+      return json({ error: e instanceof HttpError ? e.message : "Erro interno. Tente de novo em instantes." }, status);  // não vaza detalhes internos
     }
   };
 }

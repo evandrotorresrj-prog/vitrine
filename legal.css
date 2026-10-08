@@ -1,0 +1,25 @@
+:root{
+  --bg:#05060D; --surface:#0E1022; --border:#252A50;
+  --ink:#F3F4FF; --ink-muted:#B4B9DB; --ink-faint:#7E84B0;
+  --accent:#8B5CFF; --accent2:#00E0FF;
+}
+*{box-sizing:border-box;}
+html,body{margin:0; background:var(--bg); color:var(--ink); font-family:"Manrope",system-ui,-apple-system,"Segoe UI",sans-serif; font-size:16px; line-height:1.7;}
+a{color:var(--accent2);}
+.wrap{max-width:760px; margin:0 auto; padding:28px 16px 64px;}
+.top{display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; padding-bottom:18px; border-bottom:1px solid var(--border); margin-bottom:28px;}
+.brand{display:flex; align-items:center; gap:10px; color:var(--ink); text-decoration:none; font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:19px;}
+.brand svg{width:30px; height:30px;}
+.top nav{display:flex; gap:16px; flex-wrap:wrap; font-size:14px;}
+.top nav a{color:var(--ink-muted); text-decoration:none;}
+.top nav a[aria-current="page"]{color:var(--ink); font-weight:700;}
+h1{font-family:"Space Grotesk",sans-serif; font-size:30px; line-height:1.2; margin:0 0 6px;}
+.upd{color:var(--ink-faint); font-size:14px; margin:0 0 28px;}
+h2{font-family:"Space Grotesk",sans-serif; font-size:20px; margin:34px 0 8px;}
+p,li{color:var(--ink-muted);}
+strong{color:var(--ink);}
+ul,ol{padding-left:22px;}
+.box{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:16px 18px; margin:18px 0;}
+.foot{margin-top:48px; padding-top:18px; border-top:1px solid var(--border); color:var(--ink-faint); font-size:13.5px;}
+@media (max-width:560px){ h1{font-size:25px;} }
+.m0{margin:0;}

@@ -667,7 +667,7 @@
           '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">' +
           (modo === "publicar"
             ? '<button class="btn btn-ghost btn-sm" id="pv-back">Voltar e ajustar</button><button class="btn btn-primary btn-sm" id="pv-ok"' + (carregando || aviso ? " disabled" : "") + '>' + ICONS.ig + ' Publicar no ' + F.nome + '</button>'
-            : '<button class="btn btn-ghost btn-sm" id="pv-back">Fechar</button>' + (formato === "feed" && !carregando && blobs.length ? '<button class="btn btn-primary btn-sm" id="pv-musica">🎵 Postar com música</button>' : '')) + '</div>';
+            : '<button class="btn btn-ghost btn-sm" id="pv-back">Fechar</button>' + (formato === "feed" && !carregando && blobs.length && !c._temp ? '<button class="btn btn-primary btn-sm" id="pv-musica">🎵 Postar com música</button>' : '')) + '</div>';
         document.getElementById("pv-close").onclick = function () { done(null); };
         document.getElementById("pv-back").onclick = function () { done(null); };
         var ok = document.getElementById("pv-ok"); if (ok) ok.onclick = function () { done({ formato: formato, blobs: cache[formato] }); };
@@ -700,6 +700,32 @@
         setTimeout(function () { var a = document.createElement("a"); a.href = b.url; a.download = "vitrine-" + (i + 1) + ".jpg"; document.body.appendChild(a); a.click(); a.remove(); }, i * 350);
       });
     }
+    var idx = 0;
+    var user = (state.igConta && state.igConta.status === "ativo" && state.igConta.username) || (state.profile.nome || "seu_perfil").toLowerCase().replace(/\s+/g, "");
+    // prévia igual ao post do Instagram: passa os slides (setas ou arrastando o dedo), legenda e lugar da música
+    function previaHtml() {
+      return '<div class="igpv mu-previa"><div class="igpv-head"><div class="igpv-av">' + escapeHtml(user.slice(0, 1).toUpperCase()) + '</div>' +
+        '<div class="mu-quem"><b>' + escapeHtml(user) + '</b><span class="mu-som">🎵 a música que você escolher no Instagram</span></div></div>' +
+        '<div class="igpv-media" id="mu-media"><img src="' + blobs[idx].url + '" alt="Slide ' + (idx + 1) + '" draggable="false">' +
+        (idx > 0 ? '<button class="igpv-nav l" id="mu-prev" aria-label="Anterior">‹</button>' : '') +
+        (idx < blobs.length - 1 ? '<button class="igpv-nav r" id="mu-next" aria-label="Próximo">›</button>' : '') +
+        '<span class="igpv-count">' + (idx + 1) + '/' + blobs.length + '</span></div>' +
+        '<div class="igpv-dots">' + blobs.map(function (b, k) { return '<span class="' + (k === idx ? "on" : "") + '"></span>'; }).join("") + '</div>' +
+        '<div class="igpv-cap"><b>' + escapeHtml(user) + '</b> ' + escapeHtml(legenda) + '</div></div>';
+    }
+    function ligarPrevia() {
+      var pr = document.getElementById("mu-prev"); if (pr) pr.onclick = function () { idx--; draw(false); };
+      var nx = document.getElementById("mu-next"); if (nx) nx.onclick = function () { idx++; draw(false); };
+      var m = document.getElementById("mu-media"); if (!m) return;
+      var x0 = null;
+      m.addEventListener("touchstart", function (e) { x0 = e.touches[0].clientX; }, { passive: true });
+      m.addEventListener("touchend", function (e) {
+        if (x0 === null) return;
+        var dx = e.changedTouches[0].clientX - x0; x0 = null;
+        if (dx < -40 && idx < blobs.length - 1) { idx++; draw(false); }
+        else if (dx > 40 && idx > 0) { idx--; draw(false); }
+      });
+    }
     function draw(carregando, msg) {
       var celular = !carregando && podeCompartilhar();
       body.innerHTML =
@@ -708,7 +734,7 @@
         '<button class="modal-close" id="mu-close">' + ICONS.close + '</button></div>' +
         (carregando
           ? '<div class="igpv-load" style="position:static;padding:30px 0;"><div class="spin"></div><span id="mu-load">' + (msg || "Gerando imagens…") + '</span></div>'
-          : '<div class="mu-thumbs">' + blobs.map(function (b) { return '<img src="' + b.url + '" alt="">'; }).join("") + '</div>' +
+          : '<p class="mu-titulo-previa">Veja como vai ficar antes de postar:</p>' + previaHtml() +
             (celular
               ? '<ol class="mu-passos"><li>Toque em <b>Abrir no Instagram</b> e escolha <b>Instagram → Feed</b>.</li><li>No Instagram, toque no ícone de <b>música 🎵</b> e escolha a sua.</li><li>Na legenda, <b>cole</b> o texto (já copiei pra você) e publique.</li></ol>'
               : '<ol class="mu-passos"><li>Baixe as imagens e passe para o celular (ou abra a Vitrine pelo celular, que é mais rápido).</li><li>No app do Instagram, crie um post, selecione as imagens em ordem e toque no ícone de <b>música 🎵</b>.</li><li>Cole a legenda (já copiei pra você) e publique.</li></ol>' +
@@ -721,6 +747,7 @@
             : '<button class="btn btn-primary btn-sm" id="mu-baixar">Baixar imagens e copiar legenda</button>')) +
         '</div>';
       document.getElementById("mu-close").onclick = closeModal;
+      if (!carregando) ligarPrevia();
       var ab = document.getElementById("mu-abrir");
       if (ab) ab.onclick = async function () {
         copiarLegenda();
@@ -1738,6 +1765,13 @@
     qsa("[data-dest]").forEach(function (el) {
       el.addEventListener("click", function () { wizard.dest = el.dataset.dest; renderDestStep(); });
     });
+    var vb = document.getElementById("wiz-ver-previa");
+    if (!vb) {
+      vb = document.createElement("button"); vb.type = "button"; vb.id = "wiz-ver-previa"; vb.className = "btn btn-ghost wiz-ver-previa";
+      vb.innerHTML = "👁 Ver como fica no Instagram";
+      document.getElementById("dest-grid").insertAdjacentElement("afterend", vb);
+      vb.onclick = function () { verPreviaDoWizard(); };
+    }
     document.getElementById("schedule-box").hidden = wizard.dest !== "agendado";
     if (wizard.dest === "agendado") renderCalendario();
     var igOn = state.igConta && state.igConta.status === "ativo";
@@ -1813,6 +1847,20 @@
     }
     if (wizard.step === 3) { wizard.step = 4; renderWizard(); return; }
     if (wizard.step === 4) { await confirmCarousel(); }
+  }
+
+  // prévia do carrossel ainda não salvo (passo 4): monta um carrossel temporário com o que está no assistente
+  async function verPreviaDoWizard() {
+    if (!wizard.slides || !wizard.slides.length) { toast("Gere o conteúdo primeiro."); return; }
+    var origem = wizard.subjectMode === "property" ? "imovel" : wizard.subjectMode === "topic" ? "topico" : "custom";
+    var tpl = findTemplateBySlug(wizard.templateSlug);
+    var temp = {
+      _temp: true, origem: origem, template_id: tpl ? tpl.id : null, fonte: fonteDe(wizard.fonte),
+      propriedade_id: wizard.propertyId, topico_id: wizard.topicId,
+      assunto_custom: wizard.customTopic, categoria: wizard.customCategoria,
+      slides: wizard.slides
+    };
+    await abrirPrevia(temp, "ver");
   }
 
   async function confirmCarousel() {

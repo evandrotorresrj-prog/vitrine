@@ -372,9 +372,9 @@ body .auth-card{padding:22px;}
   .lp-slide small{font-size:10px; font-weight:800; letter-spacing:0.08em; color:#7CF3FF;}
   .lp-slide strong{font-family:"Space Grotesk",sans-serif; font-size:25px; line-height:1.08; margin-top:8px;}
   .lp-slide em{font-style:normal; font-size:12.5px; margin-top:auto; opacity:0.9;}
-  .lp-slide.s1{background:linear-gradient(180deg,rgba(8,10,16,0.25),rgba(8,10,16,0.85)), radial-gradient(circle at 70% 30%,#3B4C8F,#141833 70%); animation-delay:0s;}
-  .lp-slide.s2{background:linear-gradient(180deg,rgba(8,10,16,0.25),rgba(8,10,16,0.85)), radial-gradient(circle at 30% 40%,#5E3FA8,#151230 70%); animation-delay:3s;}
-  .lp-slide.s3{background:linear-gradient(180deg,rgba(8,10,16,0.2),rgba(8,10,16,0.85)), radial-gradient(circle at 60% 60%,#0E6D86,#0A1A2A 70%); animation-delay:6s;}
+  .lp-slide.s1{background:linear-gradient(180deg,rgba(8,10,16,0.35),rgba(8,10,16,0.88)), url("https://images.unsplash.com/photo-1772797583328-f83bc3f94f80?auto=format&fit=crop&w=600&h=750&q=75") center/cover, #141833; animation-delay:0s;}
+  .lp-slide.s2{background:linear-gradient(180deg,rgba(8,10,16,0.35),rgba(8,10,16,0.88)), url("https://images.unsplash.com/photo-1590486803833-1c5dc8ddd4c8?auto=format&fit=crop&w=600&h=750&q=75") center/cover, #151230; animation-delay:3s;}
+  .lp-slide.s3{background:linear-gradient(180deg,rgba(8,10,16,0.3),rgba(8,10,16,0.88)), url("https://images.unsplash.com/photo-1742318592061-15c5f19e1e47?auto=format&fit=crop&w=600&h=750&q=75") center/cover, #0A1A2A; animation-delay:6s;}
   @keyframes lpSlide{0%{opacity:0; transform:translateX(18px);} 4%,30%{opacity:1; transform:none;} 34%,100%{opacity:0; transform:translateX(-18px);}}
   .lp-dots{display:flex; justify-content:center; gap:5px; padding:10px 0 2px;} .lp-dots span{width:6px; height:6px; border-radius:50%; background:#3A3F6B;} .lp-dots span.on{background:var(--accent2);}
   .lp-float{position:absolute; display:flex; align-items:center; gap:8px; font-size:12.5px; font-weight:700; background:rgba(14,16,34,0.9); border:1px solid rgba(139,92,255,0.4); padding:9px 13px; border-radius:12px; box-shadow:0 14px 30px -14px rgba(0,0,0,0.8); animation:lpFloat 5s ease-in-out infinite;}
@@ -515,7 +515,7 @@ body .auth-card{padding:22px;}
   .ig-note{display:flex; gap:8px; align-items:flex-start; background:var(--status-sched-bg); color:var(--status-sched-fg); border-radius:10px; padding:10px 12px; font-size:12px; margin-top:12px;}
   .ig-note svg{width:15px; height:15px; flex:none; margin-top:1px;}
   /* ---------- instagram screen ---------- */
-  .ig-connect{display:flex; align-items:center; justify-content:space-between; background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:20px 22px; margin-bottom:24px;}
+  .ig-connect{display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:20px 22px; margin-bottom:24px;}
   .ig-connect .l{display:flex; gap:14px; align-items:center;}
   .ig-icon{width:44px; height:44px; border-radius:12px; background:linear-gradient(135deg,#8B5CFF,#00E0FF); display:flex; align-items:center; justify-content:center; flex:none;}
   .ig-icon svg{width:24px; height:24px; color:#fff;}

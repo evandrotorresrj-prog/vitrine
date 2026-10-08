@@ -513,6 +513,15 @@
     ctx.fillText((i + 1) + "/" + total, SLIDE_W - pad, bottomLimit + 30);
     ctx.globalAlpha = 1; ctx.textAlign = "left";
 
+    // teste grátis: faixa com o link da plataforma embaixo de cada página do carrossel
+    if (emTeste()) {
+      var faixaH = 64, faixaY = SLIDE_H - (alto ? 250 : 0) - faixaH;
+      ctx.fillStyle = "rgba(5,6,13,0.78)"; ctx.fillRect(0, faixaY, SLIDE_W, faixaH);
+      ctx.fillStyle = "#ffffff"; ctx.textAlign = "center"; ctx.font = "600 26px Manrope, Arial, sans-serif";
+      ctx.fillText("Criado com Vitrine  ·  " + LINK_VITRINE, SLIDE_W / 2, faixaY + 42);
+      ctx.textAlign = "left";
+    }
+
     return new Promise(function (resolve, reject) {
       try { cv.toBlob(function (b) { b ? resolve(b) : reject(new Error("Falha ao gerar imagem.")); }, "image/jpeg", 0.9); }
       catch (e) { reject(e); }
@@ -578,7 +587,10 @@
     }
   }
 
-  function legendaPadrao(c) { return c.legenda || c.slides.map(function (s) { return s.titulo; }).join(" · "); }
+  function legendaPadrao(c) {
+    var leg = c.legenda || c.slides.map(function (s) { return s.titulo; }).join(" · ");
+    return emTeste() ? leg + "\n\n✨ Criado com a Vitrine — " + LINK_VITRINE : leg;
+  }
 
   var FORMATOS = {
     feed: { nome: "Feed", desc: "Carrossel no feed (4:5)", alto: false },
@@ -675,6 +687,7 @@
 
   async function publishToInstagram(c, btn) {
     if (!(state.igConta && state.igConta.status === "ativo")) { toast("Conecte o Instagram primeiro (aba Instagram)."); return false; }
+    if (testeSemPublicacoes()) { avisoFimDoTeste(); return false; }
     if (!c.slides || !c.slides.length) { toast("Este carrossel não tem slides."); return false; }
     var orig = btn ? btn.innerHTML : "";
     function label(t) { if (btn) btn.innerHTML = '<div class="spin"></div> ' + t; }
@@ -955,6 +968,23 @@
     a.download = "vitrine-contas-" + new Date().toISOString().slice(0, 10) + ".csv";
     document.body.appendChild(a); a.click(); a.remove();
     setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
+  }
+
+  // teste grátis: posts levam a marca da Vitrine e o limite de publicações é o mesmo dos carrosséis grátis
+  var LINK_VITRINE = "vitrinecorretores.github.io";
+  function emTeste() { return !state.assinatura || state.assinatura.status === "trial"; }
+  function publicadosNoInstagram() { return state.carrosseis.filter(function (c) { return c.status === "publicado" && c.instagram_media_id; }).length; }
+  function limitePublicacoesTeste() { return (state.profile && state.profile.trial_limite) || 3; }
+  function testeSemPublicacoes() { return emTeste() && publicadosNoInstagram() >= limitePublicacoesTeste(); }
+  function avisoFimDoTeste() {
+    document.getElementById("modal-body").innerHTML =
+      '<div class="modal-head"><h3 style="font-size:18px;">Seu teste grátis terminou</h3><button class="modal-close" id="modal-close">' + ICONS.close + '</button></div>' +
+      '<p style="color:var(--ink-muted);font-size:14px;line-height:1.6;margin:6px 0 16px;">Você já publicou os ' + limitePublicacoesTeste() + ' carrosséis do teste grátis no Instagram. Pra continuar publicando — e sem a marca da Vitrine nas imagens — assine um plano.</p>' +
+      '<div style="display:flex;gap:8px;justify-content:flex-end;"><button class="btn btn-ghost btn-sm" id="fim-teste-fechar">Agora não</button><button class="btn btn-primary btn-sm" id="fim-teste-planos">Ver planos</button></div>';
+    document.getElementById("overlay").hidden = false;
+    document.getElementById("modal-close").onclick = closeModal;
+    document.getElementById("fim-teste-fechar").onclick = closeModal;
+    document.getElementById("fim-teste-planos").onclick = function () { closeModal(); showScreen("plano"); };
   }
 
   function trialBlocked() {
@@ -1378,8 +1408,29 @@
     if (wizard.subjectMode === "custom") renderCustomForm();
   }
 
+  // assuntos sugeridos: a cada carregamento da página mostra 6 diferentes — começa com um sorteio do banco
+  // e troca pelos que a IA acabou de criar (sugerir-conteudo) assim que chegam
+  var topicosDaVez = null, topicosIA = false;
+  function sortear(lista, n) {
+    var c = lista.slice();
+    for (var i = c.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = c[i]; c[i] = c[j]; c[j] = t; }
+    return c.slice(0, n);
+  }
+  function prepararAssuntos() {
+    topicosDaVez = sortear(state.topicos, 6); topicosIA = false;
+    callFunction("sugerir-conteudo", { tipo: "assunto" }).then(function (r) {
+      var novos = (r && r.topicos) || [];
+      if (!novos.length) return;
+      state.topicos = state.topicos.concat(novos);
+      topicosDaVez = novos.slice(0, 6); topicosIA = true;
+      if (wizard.subjectMode === "topic" && !document.getElementById("topic-grid").closest("[hidden]")) renderTopicGrid();
+    }).catch(function () { /* limite de sugestões ou IA fora: fica com o sorteio */ });
+  }
+
   function renderTopicGrid() {
-    document.getElementById("topic-grid").innerHTML = state.topicos.map(function (t) {
+    if (!topicosDaVez) topicosDaVez = sortear(state.topicos, 6);
+    if (wizard.topicId && !topicosDaVez.some(function (t) { return t.id === wizard.topicId; })) { var sel = findTopic(wizard.topicId); if (sel) topicosDaVez = [sel].concat(topicosDaVez.slice(0, 5)); }
+    document.getElementById("topic-grid").innerHTML = (topicosIA ? '<div class="topic-ia" style="grid-column:1/-1;font-size:12px;color:var(--ink-muted);">✨ Assuntos novos criados pela IA agora — atualize a página para ver outros</div>' : "") + topicosDaVez.map(function (t) {
       var primeiraIdeia = (t.ideias && t.ideias[0]) ? t.ideias[0].titulo : "";
       return '<div class="topic-card ' + (wizard.topicId === t.id ? "selected" : "") + '" data-topic="' + t.id + '">' +
         '<span class="topic-cat">' + escapeHtml(t.categoria) + '</span><h4>' + escapeHtml(t.gancho) + '</h4><p>' + escapeHtml(primeiraIdeia) + '</p></div>';
@@ -1690,6 +1741,7 @@
       if (new Date(date + "T" + time) <= new Date()) { toast("Esse horário já passou — escolha outro no calendário."); return; }
       payload.data_agendada = new Date(date + "T" + time).toISOString();
       if (wizard.slides.length < 2 || wizard.slides.length > 10) { toast("Pra publicar no feed o carrossel precisa ter de 2 a 10 slides."); return; }
+      if (testeSemPublicacoes()) { avisoFimDoTeste(); return; }
     } else if (wizard.dest === "publicado") {
       payload.data_publicada = new Date().toISOString();
     }
@@ -1818,7 +1870,8 @@
     document.getElementById("ig-connect").innerHTML = connected ?
       ('<div class="l"><div class="ig-icon">' + ICONS.ig + '</div><div><div style="font-weight:700;">@' + escapeHtml(state.igConta.username) + '</div>' +
         '<div style="font-size:12px;color:var(--status-pub-fg);font-weight:600;">Conectado' + (state.igConta.token_expires_at ? ' · acesso válido até ' + fmtDate(state.igConta.token_expires_at) : '') + '</div></div></div>' +
-        '<button class="btn btn-ghost btn-sm" id="ig-toggle">Desconectar</button>')
+        '<button class="btn btn-ghost btn-sm" id="ig-toggle">Desconectar</button>') +
+        (emTeste() ? '<div style="flex-basis:100%;font-size:12.5px;color:var(--ink-muted);margin-top:10px;">Teste grátis: você pode publicar até ' + limitePublicacoesTeste() + ' carrosséis (' + Math.max(limitePublicacoesTeste() - publicadosNoInstagram(), 0) + ' restante' + (limitePublicacoesTeste() - publicadosNoInstagram() === 1 ? "" : "s") + '). As imagens e a legenda levam o link da Vitrine.</div>' : "")
       :
       ('<div class="l"><div class="ig-icon">' + ICONS.ig + '</div><div><div style="font-weight:700;">Nenhuma conta conectada</div>' +
         '<div style="font-size:12px;color:var(--ink-muted);">Conecte sua conta Profissional do Instagram para publicar os carrosséis direto pela Vitrine</div></div></div>' +
@@ -2140,6 +2193,7 @@
       updateNavPlanBadge();
       resetWizard();
       showScreen("painel");
+      prepararAssuntos();
       handleReturnParams().catch(function (e) { console.error(e); });
     } catch (err) {
       await Auth.signOut();

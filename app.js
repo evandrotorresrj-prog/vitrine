@@ -1416,21 +1416,47 @@
     for (var i = c.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = c[i]; c[i] = c[j]; c[j] = t; }
     return c.slice(0, n);
   }
-  function prepararAssuntos() {
-    topicosDaVez = sortear(state.topicos, 6); topicosIA = false;
+  var gerandoAssuntos = false;
+  function statusAssuntos(txt) { var el = document.getElementById("topic-status"); if (el) el.textContent = txt; }
+  // pede 6 assuntos inéditos pra IA (botão "Gerar novas sugestões" e também automático ao abrir a página)
+  function gerarNovosAssuntos(manual) {
+    if (gerandoAssuntos) return;
+    gerandoAssuntos = true;
+    var btn = document.getElementById("topic-novas");
+    if (btn) { btn.disabled = true; btn.innerHTML = '<div class="spin"></div> Gerando…'; }
+    statusAssuntos("A IA está criando assuntos novos de mercado imobiliário…");
     callFunction("sugerir-conteudo", { tipo: "assunto" }).then(function (r) {
       var novos = (r && r.topicos) || [];
-      if (!novos.length) return;
+      if (!novos.length) throw new Error("A IA não trouxe sugestões agora.");
       state.topicos = state.topicos.concat(novos);
       topicosDaVez = novos.slice(0, 6); topicosIA = true;
-      if (wizard.subjectMode === "topic" && !document.getElementById("topic-grid").closest("[hidden]")) renderTopicGrid();
-    }).catch(function () { /* limite de sugestões ou IA fora: fica com o sorteio */ });
+      statusAssuntos("✨ Assuntos novos criados pela IA agora");
+      if (wizard.subjectMode === "topic") renderTopicGrid();
+    }).catch(function (e) {
+      if (manual) {
+        // sem IA no momento (ex.: limite por hora): pelo menos troca por outros do banco
+        topicosDaVez = sortear(state.topicos, 6); topicosIA = false;
+        if (wizard.subjectMode === "topic") renderTopicGrid();
+        toast((e && e.message ? e.message : "Não deu pra gerar agora.") + " Mostrei outros assuntos do banco.");
+      }
+      statusAssuntos("");
+    }).then(function () {
+      gerandoAssuntos = false;
+      var b = document.getElementById("topic-novas");
+      if (b) { b.disabled = false; b.textContent = "✨ Gerar novas sugestões"; }
+    });
+  }
+  function prepararAssuntos() {
+    topicosDaVez = sortear(state.topicos, 6); topicosIA = false;
+    var btn = document.getElementById("topic-novas");
+    if (btn && !btn.dataset.ok) { btn.dataset.ok = "1"; btn.addEventListener("click", function () { gerarNovosAssuntos(true); }); }
+    gerarNovosAssuntos(false);
   }
 
   function renderTopicGrid() {
     if (!topicosDaVez) topicosDaVez = sortear(state.topicos, 6);
     if (wizard.topicId && !topicosDaVez.some(function (t) { return t.id === wizard.topicId; })) { var sel = findTopic(wizard.topicId); if (sel) topicosDaVez = [sel].concat(topicosDaVez.slice(0, 5)); }
-    document.getElementById("topic-grid").innerHTML = (topicosIA ? '<div class="topic-ia" style="grid-column:1/-1;font-size:12px;color:var(--ink-muted);">✨ Assuntos novos criados pela IA agora — atualize a página para ver outros</div>' : "") + topicosDaVez.map(function (t) {
+    document.getElementById("topic-grid").innerHTML = topicosDaVez.map(function (t) {
       var primeiraIdeia = (t.ideias && t.ideias[0]) ? t.ideias[0].titulo : "";
       return '<div class="topic-card ' + (wizard.topicId === t.id ? "selected" : "") + '" data-topic="' + t.id + '">' +
         '<span class="topic-cat">' + escapeHtml(t.categoria) + '</span><h4>' + escapeHtml(t.gancho) + '</h4><p>' + escapeHtml(primeiraIdeia) + '</p></div>';

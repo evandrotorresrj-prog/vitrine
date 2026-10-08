@@ -89,6 +89,18 @@ Deno.serve(handle(async (req) => {
   const { data: tok } = await db.from("instagram_tokens").select("*").eq("corretor_id", uid).maybeSingle();
   if (!conta || !tok) throw new HttpError(400, "Conecte o Instagram antes de publicar.");
 
+  // teste grátis: limite de publicações e link da Vitrine na legenda (a marca nas imagens é feita no app)
+  const { data: assinTeste } = await db.from("assinaturas").select("status").eq("corretor_id", uid).in("status", ["trial", "ativa"]).maybeSingle();
+  const emTeste = !assinTeste || assinTeste.status === "trial";
+  if (emTeste) {
+    const { data: perfilTeste } = await db.from("profiles").select("trial_limite").eq("id", uid).maybeSingle();
+    const { count: jaPublicados } = await db.from("carrosseis").select("id", { count: "exact", head: true })
+      .eq("corretor_id", uid).eq("status", "publicado").not("instagram_media_id", "is", null);
+    const limite = perfilTeste?.trial_limite ?? 3;
+    if ((jaPublicados ?? 0) >= limite) throw new HttpError(402, `Você já publicou os ${limite} carrosséis do teste grátis. Assine um plano para continuar publicando.`);
+  }
+  const LINK_TESTE = "\n\n✨ Criado com a Vitrine — vitrinecorretores.github.io";
+
   // renova o token se faltar menos de 7 dias
   let token = tok.access_token as string;
   if (tok.expires_at && new Date(tok.expires_at).getTime() - Date.now() < 7 * 86_400_000) {
@@ -112,7 +124,9 @@ Deno.serve(handle(async (req) => {
     if (imagens.length !== slides.length) throw new HttpError(400, "Os slides ainda não foram renderizados como imagem.");
   }
   const igId = conta.instagram_business_id as string;
-  const caption = (legenda ?? car.legenda ?? "").slice(0, 2200);
+  let caption = String(legenda ?? car.legenda ?? "");
+  if (emTeste && !caption.includes("vitrinecorretores.github.io")) caption = caption.slice(0, 2200 - LINK_TESTE.length) + LINK_TESTE;
+  caption = caption.slice(0, 2200);
   const agora = () => new Date().toISOString();
   const concluir = async (mediaId: string, permalink: string | null) => {
     const quando = agora();

@@ -40,6 +40,17 @@ async function publicarUm(db: SupabaseClient, car: any) {
   const { data: tok } = await db.from("instagram_tokens").select("*").eq("corretor_id", uid).maybeSingle();
   if (!conta || !tok) throw new Error("Instagram não conectado na hora agendada. Conecte na aba Instagram e publique pelo painel.");
 
+  // teste grátis: limite de publicações e link da Vitrine na legenda
+  const { data: assinTeste } = await db.from("assinaturas").select("status").eq("corretor_id", uid).in("status", ["trial", "ativa"]).maybeSingle();
+  const emTeste = !assinTeste || assinTeste.status === "trial";
+  if (emTeste) {
+    const { data: perfilTeste } = await db.from("profiles").select("trial_limite").eq("id", uid).maybeSingle();
+    const { count: jaPublicados } = await db.from("carrosseis").select("id", { count: "exact", head: true })
+      .eq("corretor_id", uid).eq("status", "publicado").not("instagram_media_id", "is", null);
+    const limite = perfilTeste?.trial_limite ?? 3;
+    if ((jaPublicados ?? 0) >= limite) throw new Error(`O teste grátis permite publicar ${limite} carrosséis e esse limite já foi usado. Assine um plano para continuar publicando.`);
+  }
+
   let token = tok.access_token as string;
   if (tok.expires_at && new Date(tok.expires_at).getTime() - Date.now() < 7 * 86_400_000) {
     const r = await fetch(`https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=${token}`);
@@ -60,7 +71,10 @@ async function publicarUm(db: SupabaseClient, car: any) {
   if (imagens.length !== slides.length) throw new Error("As imagens do carrossel não foram geradas. Abra o carrossel no painel e publique.");
   if (imagens.length < 2 || imagens.length > 10) throw new Error("O carrossel do feed precisa ter de 2 a 10 slides.");
   // deno-lint-ignore no-explicit-any
-  const caption = slides.map((s: any) => s.titulo).filter(Boolean).join(" · ").slice(0, 2200);
+  const LINK_TESTE = "\n\n✨ Criado com a Vitrine — vitrinecorretores.github.io";
+  let caption = slides.map((s: any) => s.titulo).filter(Boolean).join(" · ");
+  if (emTeste) caption = caption.slice(0, 2200 - LINK_TESTE.length) + LINK_TESTE;
+  caption = caption.slice(0, 2200);
   const igId = conta.instagram_business_id as string;
 
   const filhos: string[] = [];

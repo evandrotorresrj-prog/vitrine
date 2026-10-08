@@ -65,11 +65,17 @@ type Slide = { titulo?: string; corpo?: string };
 const LUGARES_FORTALEZA = [
   "Fortaleza Beira Mar", "Fortaleza skyline", "Praia de Iracema Fortaleza", "Meireles Fortaleza",
   "Ponte dos Ingleses Fortaleza", "Praia do Futuro Fortaleza", "Fortaleza Ceara buildings", "Fortaleza sunset beach",
+  "Mucuripe Fortaleza", "Dragao do Mar Fortaleza", "Fortaleza aerial view", "Fortaleza Ceara coast",
+  "Cumbuco Ceara", "Porto das Dunas Ceara", "Fortaleza night city", "Ceara beach coconut trees",
 ];
+// quantas fotos já usadas pelo corretor ficam "proibidas" (pra não repetir entre carrosséis diferentes)
+const MEMORIA_FOTOS = 400;
 const ehFortaleza = (q: string) => /fortaleza|cear[aá]|iracema|meireles|mucuripe|aldeota/i.test(q);
 // escolhe uma foto aleatória entre as boas (não sempre a 1ª) pra não repetir as mesmas imagens
 // deno-lint-ignore no-explicit-any
-function sortear<T>(lista: T[]): T | undefined { return lista.length ? lista[Math.floor(Math.random() * Math.min(lista.length, 6))] : undefined; }
+function sortear<T>(lista: T[]): T | undefined { return lista.length ? lista[Math.floor(Math.random() * lista.length)] : undefined; }
+// página aleatória dos resultados (1 a 3): a mesma busca devolve fotos diferentes a cada vez
+const paginaAleatoria = () => 1 + Math.floor(Math.random() * 3);
 
 // pede ao Claude 1 busca curta em inglês por slide (fotos de banco de imagem respondem melhor em inglês)
 async function termosDeBusca(contexto: string, slides: Slide[]): Promise<string[]> {
@@ -97,7 +103,9 @@ O corretor atua em FORTALEZA, CEARÁ. Diversifique: em cerca de METADE dos slide
 sempre com a palavra "Fortaleza" na busca e variando o lugar — ex.: "Fortaleza Beira Mar", "Fortaleza skyline", "Praia de Iracema Fortaleza",
 "Meireles Fortaleza", "Fortaleza Ceara buildings", "Ponte dos Ingleses Fortaleza", "Praia do Futuro Fortaleza", "Dragao do Mar Fortaleza", "Fortaleza sunset beach".
 Nos outros slides use buscas em INGLÊS ligadas ao assunto (ex.: "modern apartment living room", "house keys handover", "couple signing contract", "beach view balcony").
-Não repita a mesma busca em dois slides. Evite pessoas olhando pra câmera e evite qualquer coisa com texto.
+Não repita a mesma busca em dois slides e fuja do óbvio: varie ângulo, ambiente, hora do dia e estilo (ex.: em vez de só "modern apartment",
+use "minimalist kitchen morning light", "cozy balcony plants sunset", "aerial view residential towers", "architect blueprint desk").
+Evite pessoas olhando pra câmera e evite qualquer coisa com texto. Código de variedade desta busca: ${Math.random().toString(36).slice(2, 7)}.
 Responda SÓ com um array JSON de strings, na mesma ordem dos slides.`,
         }],
       }),
@@ -112,23 +120,25 @@ Responda SÓ com um array JSON de strings, na mesma ordem dos slides.`,
 
 const base = (u: string) => (u || "").split("?")[0];
 
-async function buscarUnsplash(q: string, usados: Set<string>) {
+async function buscarUnsplash(q: string, usados: Set<string>, pagina = paginaAleatoria()): Promise<Foto | null> {
   const u = new URL("https://api.unsplash.com/search/photos");
+  u.searchParams.set("page", String(pagina));
   u.searchParams.set("query", q);
   if (!ehFortaleza(q)) u.searchParams.set("orientation", "portrait");   // Fortaleza tem menos fotos: aceita horizontal (o recorte 4:5 é feito pela CDN)
   u.searchParams.set("content_filter", "high");
-  u.searchParams.set("per_page", "20");
+  u.searchParams.set("per_page", "30");
   const r = await fetch(u, { headers: { Authorization: `Client-ID ${UNSPLASH}`, "Accept-Version": "v1" } });
   if (!r.ok) throw new HttpError(502, "Banco de fotos indisponível (" + r.status + ").");
   const d = await r.json();
   // deno-lint-ignore no-explicit-any
   const foto = sortear((d.results ?? []).filter((p: any) => !usados.has("u" + p.id) && !usados.has(base(p.urls.raw)) && p.width >= 1080));
-  if (!foto) return null;
+  if (!foto) return pagina > 1 ? await buscarUnsplash(q, usados, 1) : null;
   usados.add("u" + foto.id);
   // regra da API do Unsplash: avisar o "download" quando a foto é escolhida pra uso
   fetch(foto.links.download_location, { headers: { Authorization: `Client-ID ${UNSPLASH}` } }).catch(() => {});
   // já recortada em 4:5 e 1080x1350 (alta resolução, tamanho exato do Instagram) pela CDN do Unsplash
   return {
+    id: "u" + foto.id,
     url: `${foto.urls.raw}&w=1080&h=1350&fit=crop&crop=entropy&q=85&fm=jpg`,
     credito: `Foto: ${foto.user?.name ?? "Unsplash"} / Unsplash`,
     // regra de atribuição do Unsplash: link pro perfil do fotógrafo com utm do app
@@ -136,29 +146,38 @@ async function buscarUnsplash(q: string, usados: Set<string>) {
   };
 }
 
-async function buscarFoto(q: string, usados: Set<string>) {
-  if (UNSPLASH) {
-    const f = await buscarUnsplash(q, usados);
-    if (f || !PEXELS) return f;
+type Foto = { id: string; url: string; credito: string; link: string };
+// com os dois bancos configurados, sorteia qual tentar primeiro (dobra o acervo e reduz repetição)
+async function buscarFoto(q: string, usados: Set<string>): Promise<Foto | null> {
+  const ordem: ("u" | "p")[] = [];
+  if (UNSPLASH) ordem.push("u");
+  if (PEXELS) ordem.push("p");
+  if (ordem.length === 2 && Math.random() < 0.5) ordem.reverse();
+  for (const b of ordem) {
+    try {
+      const f = b === "u" ? await buscarUnsplash(q, usados) : await buscarPexels(q, usados);
+      if (f) return f;
+    } catch (e) { console.error("banco", b, e); }
   }
-  return await buscarPexels(q, usados);
+  return null;
 }
 
-async function buscarPexels(q: string, usados: Set<string>) {
+async function buscarPexels(q: string, usados: Set<string>, pagina = paginaAleatoria()): Promise<Foto | null> {
   const u = new URL("https://api.pexels.com/v1/search");
+  u.searchParams.set("page", String(pagina));
   u.searchParams.set("query", q);
   if (!ehFortaleza(q)) u.searchParams.set("orientation", "portrait");
   u.searchParams.set("size", "large");          // só fotos grandes (alta resolução)
-  u.searchParams.set("per_page", "20");
+  u.searchParams.set("per_page", "30");
   const r = await fetch(u, { headers: { Authorization: PEXELS! } });
   if (!r.ok) throw new HttpError(502, "Banco de fotos indisponível (" + r.status + ").");
   const d = await r.json();
   // deno-lint-ignore no-explicit-any
   const foto = sortear((d.photos ?? []).filter((p: any) => !usados.has("p" + p.id) && !usados.has(base(p.src.original)) && p.width >= 1080));
-  if (!foto) return null;
+  if (!foto) return pagina > 1 ? await buscarPexels(q, usados, 1) : null;
   usados.add("p" + foto.id);
   // "large2x" = ~1880px de largura, comprimida pra web; recortamos 4:5 no app
-  return { url: foto.src.large2x || foto.src.original, credito: `Foto: ${foto.photographer} / Pexels`, link: foto.url };
+  return { id: "p" + foto.id, url: foto.src.large2x || foto.src.original, credito: `Foto: ${foto.photographer} / Pexels`, link: foto.url };
 }
 
 Deno.serve(handle(async (req) => {
@@ -179,12 +198,23 @@ Deno.serve(handle(async (req) => {
     ? termosDoCorretor.map((t: unknown) => String(t).slice(0, 80))
     : await termosDeBusca(String(contexto), slides);
   const usados = new Set<string>((Array.isArray(excluir) ? excluir : []).map((u: unknown) => base(String(u))));
+  // fotos que esse corretor já usou em outros carrosséis não voltam (até MEMORIA_FOTOS mais recentes)
+  const { data: jaUsadas } = await db.from("fotos_usadas").select("foto_id").eq("corretor_id", uid)
+    .order("created_at", { ascending: false }).limit(MEMORIA_FOTOS);
+  for (const r of jaUsadas ?? []) usados.add(r.foto_id);
   const imagens = [];
+  const escolhidas: string[] = [];
   for (const q of termos) {
     let foto = await buscarFoto(q, usados);
     if (!foto && ehFortaleza(q)) foto = await buscarFoto("Fortaleza Brazil", usados);           // Fortaleza genérica
     if (!foto) foto = await buscarFoto(q.split(" ").slice(0, 2).join(" ") || "real estate", usados); // busca mais ampla
-    imagens.push(foto ? { ...foto, termo: q } : null);
+    if (foto) escolhidas.push(foto.id);
+    imagens.push(foto ? { url: foto.url, credito: foto.credito, link: foto.link, termo: q } : null);
+  }
+  // grava as escolhidas (pelo id do banco de fotos) pra não repetir nos próximos carrosséis
+  if (escolhidas.length) {
+    const { error: eu } = await db.from("fotos_usadas").insert(escolhidas.map((foto_id) => ({ corretor_id: uid, foto_id })));
+    if (eu) console.error("fotos_usadas:", eu);
   }
   return json({ imagens });
 }));

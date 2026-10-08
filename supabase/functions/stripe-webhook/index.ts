@@ -93,11 +93,62 @@ async function ativar(db: any, sub: Stripe.Subscription, sessionId?: string) {
 
   if (atual) {
     if (atual.status === "trial") campos.data_inicio = new Date().toISOString();
+    campos.equipe_id = null;   // quem paga a própria assinatura não depende de equipe
     const { error } = await db.from("assinaturas").update(campos).eq("id", atual.id);
     if (error) throw error;
   } else {
     const { error } = await db.from("assinaturas").insert({ ...campos, data_inicio: new Date().toISOString() });
     if (error) throw error;
+  }
+  await sincronizarEquipe(db, corretor_id, plano_id, periodo, fimDoPeriodo(sub));
+}
+
+// Planos de imobiliária: cria/atualiza a equipe do dono e estende o acesso dos corretores convidados
+// deno-lint-ignore no-explicit-any
+async function sincronizarEquipe(db: any, donoId: string, planoId: string, periodo: string, dataFim: string | null) {
+  const { data: plano } = await db.from("planos").select("id, nome, tipo, max_corretores").eq("id", planoId).maybeSingle();
+  const { data: equipe } = await db.from("equipes").select("*").eq("dono_id", donoId).maybeSingle();
+  if (!plano || plano.tipo !== "equipe") {
+    if (equipe?.ativa) await desativarEquipe(db, equipe);   // trocou pra plano individual
+    return;
+  }
+  let eq = equipe;
+  if (!eq) {
+    const { data: perfil } = await db.from("profiles").select("nome").eq("id", donoId).maybeSingle();
+    const { data: nova, error } = await db.from("equipes").insert({
+      dono_id: donoId, nome: perfil?.nome ? `Equipe ${perfil.nome}` : "Minha imobiliária",
+      plano_id: plano.id, max_corretores: plano.max_corretores, ativa: true,
+    }).select("*").single();
+    if (error) throw error;
+    eq = nova;
+  } else {
+    await db.from("equipes").update({ plano_id: plano.id, max_corretores: plano.max_corretores, ativa: true }).eq("id", eq.id);
+  }
+  // corretores que já aceitaram o convite: renova (ou devolve) o acesso com a mesma data do dono
+  const { data: membros } = await db.from("equipe_membros").select("corretor_id").eq("equipe_id", eq.id).eq("status", "ativo");
+  for (const m of membros ?? []) {
+    if (!m.corretor_id) continue;
+    const { data: atual } = await db.from("assinaturas").select("id, status, equipe_id, stripe_subscription_id")
+      .eq("corretor_id", m.corretor_id).in("status", ["trial", "ativa"]).maybeSingle();
+    if (atual?.stripe_subscription_id) continue;           // ele paga a própria assinatura
+    if (atual && atual.equipe_id === eq.id) {
+      await db.from("assinaturas").update({ status: "ativa", plano_id: plano.id, periodo, data_fim: dataFim }).eq("id", atual.id);
+      continue;
+    }
+    if (atual) await db.from("assinaturas").update({ status: "cancelada", data_fim: new Date().toISOString() }).eq("id", atual.id);
+    await db.from("assinaturas").insert({ corretor_id: m.corretor_id, status: "ativa", plano_id: plano.id, periodo,
+      data_inicio: new Date().toISOString(), data_fim: dataFim, equipe_id: eq.id });
+  }
+}
+
+// assinatura da imobiliária acabou: os convidados voltam ao teste grátis (continuam na equipe, voltam se o dono reassinar)
+// deno-lint-ignore no-explicit-any
+async function desativarEquipe(db: any, equipe: any) {
+  await db.from("equipes").update({ ativa: false }).eq("id", equipe.id);
+  const { data: rows } = await db.from("assinaturas").select("id, corretor_id").eq("equipe_id", equipe.id).eq("status", "ativa");
+  for (const r of rows ?? []) {
+    await db.from("assinaturas").update({ status: "cancelada", data_fim: new Date().toISOString() }).eq("id", r.id);
+    await db.from("assinaturas").insert({ corretor_id: r.corretor_id, status: "trial", data_inicio: new Date().toISOString() });
   }
 }
 
@@ -110,4 +161,6 @@ async function encerrar(db: any, sub: Stripe.Subscription) {
   // volta pro teste grátis (mesmo comportamento do cancelamento simulado anterior)
   await db.from("profiles").update({ trial_usado: 0 }).eq("id", row.corretor_id);
   await db.from("assinaturas").insert({ corretor_id: row.corretor_id, status: "trial", data_inicio: new Date().toISOString() });
+  const { data: equipe } = await db.from("equipes").select("*").eq("dono_id", row.corretor_id).maybeSingle();
+  if (equipe?.ativa) await desativarEquipe(db, equipe);
 }

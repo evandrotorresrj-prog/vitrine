@@ -667,10 +667,11 @@
           '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">' +
           (modo === "publicar"
             ? '<button class="btn btn-ghost btn-sm" id="pv-back">Voltar e ajustar</button><button class="btn btn-primary btn-sm" id="pv-ok"' + (carregando || aviso ? " disabled" : "") + '>' + ICONS.ig + ' Publicar no ' + F.nome + '</button>'
-            : '<button class="btn btn-ghost btn-sm" id="pv-back">Fechar</button>') + '</div>';
+            : '<button class="btn btn-ghost btn-sm" id="pv-back">Fechar</button>' + (formato === "feed" && !carregando && blobs.length ? '<button class="btn btn-primary btn-sm" id="pv-musica">🎵 Postar com música</button>' : '')) + '</div>';
         document.getElementById("pv-close").onclick = function () { done(null); };
         document.getElementById("pv-back").onclick = function () { done(null); };
         var ok = document.getElementById("pv-ok"); if (ok) ok.onclick = function () { done({ formato: formato, blobs: cache[formato] }); };
+        var mu = document.getElementById("pv-musica"); if (mu) mu.onclick = function () { var b = cache.feed; closeModal(); resolve(null); postarComMusica(c, b); };
         var pr = document.getElementById("pv-prev"); if (pr) pr.onclick = function () { idx--; draw(); };
         var nx = document.getElementById("pv-next"); if (nx) nx.onclick = function () { idx++; draw(); };
         qsa("[data-fmt]", body).forEach(function (b) { b.onclick = function () { if (carregando) return; formato = b.dataset.fmt; idx = 0; draw(); carregar(formato); }; });
@@ -678,6 +679,75 @@
       document.getElementById("overlay").hidden = false;
       carregar("feed");
     });
+  }
+
+  /* ---------- postar com música: manda as imagens pro app do Instagram ----------
+     A API oficial do Instagram não permite escolher música, então a Vitrine entrega as imagens
+     prontas pro app (menu Compartilhar do celular) e copia a legenda. A música é escolhida lá. */
+  async function postarComMusica(c, blobsProntos) {
+    if (!c.slides || !c.slides.length) { toast("Este carrossel não tem slides."); return; }
+    if (testeSemPublicacoes()) { avisoFimDoTeste(); return; }
+    var body = document.getElementById("modal-body");
+    var blobs = blobsProntos && blobsProntos.length ? blobsProntos : null;
+    var legenda = legendaPadrao(c);
+    function arquivos() { return blobs.map(function (b, i) { return new File([b.blob], "vitrine-" + (i + 1) + ".jpg", { type: "image/jpeg" }); }); }
+    function podeCompartilhar() {
+      try { return !!(navigator.canShare && navigator.share && navigator.canShare({ files: arquivos() })); } catch (e) { return false; }
+    }
+    function copiarLegenda() { try { if (navigator.clipboard) navigator.clipboard.writeText(legenda).catch(function () {}); } catch (e) { } }
+    function baixarTodas() {
+      blobs.forEach(function (b, i) {
+        setTimeout(function () { var a = document.createElement("a"); a.href = b.url; a.download = "vitrine-" + (i + 1) + ".jpg"; document.body.appendChild(a); a.click(); a.remove(); }, i * 350);
+      });
+    }
+    function draw(carregando, msg) {
+      var celular = !carregando && podeCompartilhar();
+      body.innerHTML =
+        '<div class="modal-head"><div><h3 style="font-size:18px;">🎵 Postar com música</h3>' +
+        '<p style="margin:4px 0 0;font-size:12.5px;color:var(--ink-muted);">A música é escolhida no próprio app do Instagram.</p></div>' +
+        '<button class="modal-close" id="mu-close">' + ICONS.close + '</button></div>' +
+        (carregando
+          ? '<div class="igpv-load" style="position:static;padding:30px 0;"><div class="spin"></div><span id="mu-load">' + (msg || "Gerando imagens…") + '</span></div>'
+          : '<div class="mu-thumbs">' + blobs.map(function (b) { return '<img src="' + b.url + '" alt="">'; }).join("") + '</div>' +
+            (celular
+              ? '<ol class="mu-passos"><li>Toque em <b>Abrir no Instagram</b> e escolha <b>Instagram → Feed</b>.</li><li>No Instagram, toque no ícone de <b>música 🎵</b> e escolha a sua.</li><li>Na legenda, <b>cole</b> o texto (já copiei pra você) e publique.</li></ol>'
+              : '<ol class="mu-passos"><li>Baixe as imagens e passe para o celular (ou abra a Vitrine pelo celular, que é mais rápido).</li><li>No app do Instagram, crie um post, selecione as imagens em ordem e toque no ícone de <b>música 🎵</b>.</li><li>Cole a legenda (já copiei pra você) e publique.</li></ol>' +
+                '<p class="fmt-aviso" style="margin-top:6px;">No computador o Instagram não deixa escolher música — só no app do celular.</p>')) +
+        '<div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:14px;">' +
+        (carregando ? '' :
+          '<button class="btn btn-ghost btn-sm" id="mu-feito">Já postei — marcar como publicado</button>' +
+          (celular
+            ? '<button class="btn btn-primary btn-sm" id="mu-abrir">' + ICONS.ig + ' Abrir no Instagram</button>'
+            : '<button class="btn btn-primary btn-sm" id="mu-baixar">Baixar imagens e copiar legenda</button>')) +
+        '</div>';
+      document.getElementById("mu-close").onclick = closeModal;
+      var ab = document.getElementById("mu-abrir");
+      if (ab) ab.onclick = async function () {
+        copiarLegenda();
+        try { await navigator.share({ files: arquivos(), title: "Carrossel Vitrine" }); }
+        catch (e) { if (e && e.name !== "AbortError") { toast("Não deu pra abrir o compartilhamento — baixando as imagens."); baixarTodas(); } }
+      };
+      var bx = document.getElementById("mu-baixar");
+      if (bx) bx.onclick = function () { copiarLegenda(); baixarTodas(); toast("Imagens baixadas e legenda copiada."); };
+      var ft = document.getElementById("mu-feito");
+      if (ft) ft.onclick = async function () {
+        ft.disabled = true;
+        try {
+          var agora = new Date().toISOString();
+          await DB.update("carrosseis", "id=eq." + c.id, { status: "publicado", data_publicada: agora });
+          c.status = "publicado"; c.data_publicada = agora;
+          closeModal(); toast("Marcado como publicado."); if (!document.getElementById("screen-painel").hidden) renderPainel();
+        } catch (e) { ft.disabled = false; toast("Erro ao marcar: " + e.message); }
+      };
+    }
+    document.getElementById("overlay").hidden = false;
+    if (!blobs) {
+      draw(true);
+      try {
+        blobs = await renderCarouselBlobs(c, function (n, t) { var el = document.getElementById("mu-load"); if (el) el.textContent = "Gerando imagem " + n + "/" + t + "…"; }, "feed");
+      } catch (e) { closeModal(); toast("Erro ao gerar as imagens: " + e.message); return; }
+    }
+    draw(false);
   }
 
   async function previewCarousel(c) {
@@ -790,7 +860,7 @@
   var TITLES = {
     painel: ["Painel", "Seus carrosséis, do rascunho à publicação."],
     imoveis: ["Meus imóveis", "Os imóveis disponíveis para virar carrossel."],
-    novo: ["Novo carrossel", "IA gera o conteúdo, você ajusta o estilo e agenda."],
+    novo: ["Criar carrossel", "Escolha um assunto e a IA monta o carrossel pra você em segundos."],
     instagram: ["Instagram", "Conexão e fila de publicação."],
     plano: ["Plano", "Seu teste grátis e sua assinatura da Vitrine."],
     admin: ["Admin", "Contas cadastradas na plataforma (visível só pra você)."],
@@ -1659,7 +1729,8 @@
     var dests = [
       { id: "rascunho", nome: "Salvar rascunho", desc: "Continue editando depois" },
       { id: "agendado", nome: "Agendar", desc: "Escolha data e horário" },
-      { id: "publicado", nome: "Publicar agora", desc: (state.igConta && state.igConta.status === "ativo") ? "Envia direto pro Instagram" : "Marca como publicado" }
+      { id: "publicado", nome: "Publicar agora", desc: (state.igConta && state.igConta.status === "ativo") ? "Envia direto pro Instagram" : "Marca como publicado" },
+      { id: "musica", nome: "🎵 Postar com música", desc: "Abre o app do Instagram pra você escolher a música" }
     ];
     document.getElementById("dest-grid").innerHTML = dests.map(function (d) {
       return '<div class="dest-card ' + (wizard.dest === d.id ? "selected" : "") + '" data-dest="' + d.id + '"><h4>' + d.nome + '</h4><p>' + d.desc + '</p></div>';
@@ -1775,6 +1846,12 @@
     // o servidor só marca "publicado" depois que o Instagram confirmar o post.
     var igPublish = wizard.dest === "publicado" && state.igConta && state.igConta.status === "ativo";
     if (igPublish) { payload.status = "rascunho"; delete payload.data_publicada; }
+    // "com música": a API do Instagram não coloca música, então salva como rascunho e abre o app do Instagram
+    var comMusica = wizard.dest === "musica";
+    if (comMusica) {
+      if (testeSemPublicacoes()) { avisoFimDoTeste(); return; }
+      payload.status = "rascunho";
+    }
 
     btn.disabled = true; var orig = btn.textContent; btn.textContent = "Salvando…";
     try {
@@ -1808,6 +1885,11 @@
         } catch (e) { /* não bloqueia o salvamento do carrossel por causa disso */ }
       }
       updateNavPlanBadge();
+      if (comMusica) {
+        resetWizard(); showScreen("painel");
+        postarComMusica(carrossel);
+        return;
+      }
       if (igPublish) {
         var ok = await publishToInstagram(carrossel, btn);
         if (!ok) toast("Carrossel salvo como rascunho — tente publicar de novo pelo painel.");
@@ -2218,7 +2300,8 @@
       if (!navWired) { wireNav(); navWired = true; }
       updateNavPlanBadge();
       resetWizard();
-      showScreen("painel");
+      // página inicial depois do login: criar carrossel (se o teste acabou, vai pro Plano)
+      if (trialBlocked()) showScreen("painel"); else showScreen("novo");
       prepararAssuntos();
       handleReturnParams().catch(function (e) { console.error(e); });
     } catch (err) {

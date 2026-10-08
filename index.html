@@ -486,6 +486,11 @@ body .auth-card{padding:22px;}
   .fmt-tab{border:1.5px solid var(--border); background:var(--bg); color:var(--ink); border-radius:12px; padding:10px; text-align:left; cursor:pointer; font-family:inherit;}
   .fmt-tab b{display:block; font-size:13.5px;} .fmt-tab span{display:block; font-size:11px; color:var(--ink-muted); margin-top:2px;}
   .fmt-tab.on{border-color:var(--accent); background:var(--accent-soft);}
+  .navitem.navitem-criar{background:linear-gradient(135deg,#8B5CFF,#5B8CFF); color:#fff; margin-bottom:6px; box-shadow:0 4px 14px rgba(139,92,255,.28);}
+  .navitem.navitem-criar:hover,.navitem.navitem-criar.active{background:linear-gradient(135deg,#7a48f5,#4a7cf5); color:#fff;}
+  .mu-thumbs{display:flex; gap:8px; overflow-x:auto; padding:4px 0 10px;}
+  .mu-thumbs img{height:150px; aspect-ratio:4/5; object-fit:cover; border-radius:8px; flex:none; border:1px solid var(--line, rgba(0,0,0,.08));}
+  .mu-passos{margin:6px 0 0; padding-left:20px; font-size:13px; line-height:1.6; color:var(--ink);}
   .fmt-aviso{font-size:12px; color:var(--status-alert-fg); text-align:center; margin:10px 0 0;}
   .igpv.alto{max-width:300px;}
   .igpv-media.alto{aspect-ratio:9/16;}
@@ -507,7 +512,7 @@ body .auth-card{padding:22px;}
   .tpl-editorial{background:linear-gradient(165deg,#080A10,#0F1B33); color:var(--ink); border-color:var(--accent2);}
   .tpl-editorial .stag{color:var(--accent2);}
 
-  .dest-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:16px;}
+  .dest-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:16px;}
   .dest-card{border:2px solid var(--border); border-radius:13px; padding:14px; cursor:pointer; background:var(--bg);}
   .dest-card.selected{border-color:var(--accent2); background:var(--accent2-soft);}
   .dest-card h4{font-size:13.5px; font-family:"Manrope",sans-serif;}
@@ -727,6 +732,10 @@ body .auth-card{padding:22px;}
       </div>
       <nav class="mainnav">
         <div class="navlabel">Fluxo</div>
+        <button class="navitem navitem-criar" data-screen="novo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+          <span class="label">Criar carrossel</span>
+        </button>
         <button class="navitem" data-screen="painel">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="5" rx="1.5"/><rect x="13" y="10" width="8" height="11" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/></svg>
           <span class="label">Painel</span>
@@ -734,10 +743,6 @@ body .auth-card{padding:22px;}
         <button class="navitem" data-screen="imoveis">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V9l8-5 8 5v12"/><path d="M9 21v-7h6v7"/></svg>
           <span class="label">Meus imóveis</span>
-        </button>
-        <button class="navitem" data-screen="novo">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
-          <span class="label">Novo carrossel</span>
         </button>
         <button class="navitem" data-screen="instagram">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4"/><circle cx="17.2" cy="6.8" r="0.6" fill="currentColor"/></svg>

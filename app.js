@@ -267,6 +267,8 @@
       var res = await fetch(SUPABASE_URL + "/rest/v1/" + path, { method: opts.method || "GET", headers: headers, body: opts.body });
       if (!res.ok) {
         var errText = await res.text().catch(function () { return res.statusText; });
+        // mensagens do banco (ex.: limite do teste grátis) vêm em JSON: mostra só o texto
+        try { var ej = JSON.parse(errText); if (ej && ej.code === "P0001" && ej.message) errText = ej.message; } catch (e) { }
         throw new Error(errText || ("Erro " + res.status));
       }
       if (res.status === 204) return null;
@@ -1919,10 +1921,9 @@
       carrossel.slides = savedSlides.sort(function (a, b) { return a.ordem - b.ordem; });
       state.carrosseis.unshift(carrossel);
 
-      // O débito do crédito de trial já é feito pelo servidor (Edge Function gerar-conteudo) no momento
-      // da geração, antes deste passo de salvar — o cliente não tem mais permissão de escrever em
-      // trial_usado diretamente, então só busca o valor atualizado pra refletir na tela.
-      // (Antes essa linha reescrevia trial_usado aqui de novo, debitando 2 créditos por carrossel — corrigido.)
+      // O crédito do teste grátis é debitado pelo banco no momento em que o carrossel é salvo
+      // (gatilho carrosseis_debitar_teste) — "Gerar novamente" não gasta crédito. O cliente não escreve
+      // em trial_usado, só busca o valor atualizado pra refletir na tela.
       if (state.assinatura && state.assinatura.status === "trial") {
         try {
           var freshProfile = await DB.select("profiles", "select=trial_usado,trial_limite&id=eq." + state.profile.id);
@@ -1957,7 +1958,8 @@
 
       resetWizard(); showScreen("painel");
     } catch (err) {
-      toast("Erro ao salvar carrossel: " + err.message);
+      if (/teste grátis/i.test(err.message || "")) { toast(err.message); showScreen("plano"); }
+      else toast("Erro ao salvar carrossel: " + err.message);
     } finally {
       btn.disabled = false; btn.textContent = orig;
     }

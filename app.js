@@ -97,6 +97,7 @@
   function aplicarFoto(slide, foto) {
     slide._vistas = (slide._vistas || []).concat(slide.imagem_url ? [slide.imagem_url] : []);
     slide.imagem_url = foto.url;
+    if (foto.termo) slide._termo = foto.termo;   // reaproveitado no "Trocar" (pula a IA)
     slide.imagem_prompt = (foto.credito || "") + "||" + (foto.link || "");
   }
   async function salvarFotoDoSlide(slide) {
@@ -130,7 +131,7 @@
       btn.disabled = true; btn.innerHTML = '<div class="spin"></div>';
       try {
         var body = { contexto: contexto, slides: [{ titulo: s.titulo, corpo: s.corpo }], excluir: (s._vistas || []).concat(s.imagem_url ? [s.imagem_url] : []) };
-        if (termo) body.termos = [termo];
+        if (termo || s._termo) body.termos = [termo || s._termo];   // sem chamar a IA de novo quando já sabemos o termo
         var resp = await callFunction("buscar-imagens", body);
         var foto = (resp.imagens || [])[0];
         if (!foto) { toast("Não achei outra foto pra esse slide — tente “Buscar…” com outras palavras."); return; }
@@ -1435,6 +1436,7 @@
   var wizard = freshWizard();
   function resetWizard() {
     wizard = freshWizard(); cal = null;
+    var tl = document.getElementById("tema-livre-txt"); if (tl) tl.value = "";
     var d = document.getElementById("sched-date"); if (d) d.value = "";
   }
 
@@ -1486,6 +1488,29 @@
       if (wizard.customTopic !== e.target.value) invalidateSlides();
       wizard.customTopic = e.target.value;
     });
+    // tema livre (caixa grande no topo do passo 1): escreve a ideia e já vai pra geração
+    function categoriaDoTema(t) {
+      t = t.toLowerCase();
+      if (/financ|juros|parcela|caixa|fgts|banco|entrada|cr[eé]dito/.test(t)) return "Financiamento";
+      if (/vend|negoci|cliente|comprador|visita|proposta|corretor/.test(t)) return "Vendas";
+      if (/mercado|valoriz|pre[cç]o|alta|queda|investi|aluguel sobe|tend[eê]ncia|bairro/.test(t)) return "Mercado";
+      return "Dicas";
+    }
+    function criarComTemaLivre() {
+      var txt = document.getElementById("tema-livre-txt").value.trim();
+      if (txt.length < 5) { toast("Escreva sua ideia em pelo menos algumas palavras."); document.getElementById("tema-livre-txt").focus(); return; }
+      invalidateSlides();
+      wizard.subjectMode = "custom";
+      wizard.customTopic = txt;
+      wizard.customCategoria = categoriaDoTema(txt);
+      wizard.step = 2;
+      renderWizard();
+      runGeneration();
+    }
+    document.getElementById("tema-livre-btn").addEventListener("click", criarComTemaLivre);
+    document.getElementById("tema-livre-txt").addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); criarComTemaLivre(); }
+    });
     document.getElementById("surprise-btn").addEventListener("click", function () {
       invalidateSlides(); wizard.subjectMode = "topic"; renderSubjectStep();
     });
@@ -1514,7 +1539,7 @@
   }
   var gerandoAssuntos = false;
   function statusAssuntos(txt) { var el = document.getElementById("topic-status"); if (el) el.textContent = txt; }
-  // pede 6 assuntos inéditos pra IA (botão "Gerar novas sugestões" e também automático ao abrir a página)
+  // pede 6 assuntos inéditos pra IA (botão "Gerar novas sugestões"; automático só 1x/24h)
   function gerarNovosAssuntos(manual) {
     if (gerandoAssuntos) return;
     gerandoAssuntos = true;
@@ -1546,7 +1571,16 @@
     topicosDaVez = sortear(state.topicos, 6); topicosIA = false;
     var btn = document.getElementById("topic-novas");
     if (btn && !btn.dataset.ok) { btn.dataset.ok = "1"; btn.addEventListener("click", function () { gerarNovosAssuntos(true); }); }
-    gerarNovosAssuntos(false);
+    // economia de IA: gera sozinho no máximo 1x a cada 24h por navegador; no resto do tempo mostra os mais recentes do banco
+    var ultimo = 0;
+    try { ultimo = +localStorage.getItem("vitrine_assuntos_auto") || 0; } catch (e) {}
+    if (Date.now() - ultimo > 24 * 3600 * 1000 || state.topicos.length < 6) {
+      try { localStorage.setItem("vitrine_assuntos_auto", String(Date.now())); } catch (e) {}
+      gerarNovosAssuntos(false);
+    } else {
+      var recentes = state.topicos.slice().sort(function (a, b) { return String(b.created_at || "").localeCompare(String(a.created_at || "")); });
+      topicosDaVez = sortear(recentes.slice(0, 18), 6);
+    }
   }
 
   function renderTopicGrid() {

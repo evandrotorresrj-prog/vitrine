@@ -491,6 +491,15 @@ body .auth-card{padding:22px;}
   .navitem.navitem-criar:hover,.navitem.navitem-criar.active{background:linear-gradient(135deg,#7a48f5,#4a7cf5); color:#fff;}
   .slide-tile .stitle .hl, .dica-destaque .hl{color:#FFD60A;}
   .dica-destaque{font-size:12px; color:var(--ink-muted); margin:0 0 10px;}
+  .tema-livre{background:linear-gradient(135deg, rgba(139,92,255,0.16), rgba(0,224,255,0.08)); border:1px solid rgba(139,92,255,0.45); border-radius:16px; padding:18px; margin-bottom:18px;}
+  .tema-livre-titulo{display:block; font-family:"Space Grotesk",sans-serif; font-size:20px; font-weight:700; margin-bottom:10px;}
+  .tema-livre textarea{width:100%; min-height:110px; resize:vertical; font:inherit; font-size:16px; line-height:1.5; padding:14px; border-radius:12px; border:1px solid var(--border); background:var(--bg); color:var(--ink);}
+  .tema-livre textarea:focus{outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(139,92,255,0.25);}
+  .tema-livre-acoes{display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-top:12px;}
+  .tema-livre-dica{font-size:12.5px; color:var(--ink-muted);}
+  .ou-sep{display:flex; align-items:center; gap:12px; color:var(--ink-faint); font-size:12px; text-transform:uppercase; letter-spacing:.06em; margin:4px 0 16px;}
+  .ou-sep::before,.ou-sep::after{content:""; flex:1; height:1px; background:var(--border);}
+  @media (max-width:560px){ .tema-livre-acoes .btn{width:100%; justify-content:center;} }
   .mu-previa{max-width:360px; margin:0 auto;}
   .mu-previa .igpv-media img{width:100%; height:100%; object-fit:cover; display:block; user-select:none; -webkit-user-select:none;}
   .mu-quem{display:flex; flex-direction:column; line-height:1.25;}
@@ -819,6 +828,15 @@ body .auth-card{padding:22px;}
           <div class="wizard-card">
 
             <div id="wiz-step-1">
+              <div class="tema-livre">
+                <label for="tema-livre-txt" class="tema-livre-titulo">✍️ Sobre o que você quer postar hoje?</label>
+                <textarea id="tema-livre-txt" rows="3" maxlength="400" placeholder="Escreva sua ideia do jeito que vier. Ex.: os 5 erros de quem compra apartamento na planta em Fortaleza"></textarea>
+                <div class="tema-livre-acoes">
+                  <span class="tema-livre-dica">A IA transforma sua ideia num carrossel pronto pra viralizar.</span>
+                  <button type="button" class="btn btn-primary" id="tema-livre-btn">✨ Criar carrossel com esse tema</button>
+                </div>
+              </div>
+              <div class="ou-sep"><span>ou escolha uma sugestão abaixo</span></div>
               <h3 style="font-size:18px;margin-bottom:4px;">Escolha o assunto</h3>
               <p style="color:var(--ink-muted);font-size:12.5px;margin:0 0 14px;">Não precisa ser um imóvel da sua carteira — a Vitrine sugere assuntos virais do mercado imobiliário, ou você manda seu próprio direcionamento.</p>
               <div class="mode-tabs" id="mode-tabs">
@@ -938,6 +956,6 @@ body .auth-card{padding:22px;}
   <div id="toast"></div>
 </div>
 
-<script src="app.js?v=20261009-viral"></script>
+<script src="app.js?v=20261009-tema"></script>
 </body>
 </html>

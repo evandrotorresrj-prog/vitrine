@@ -1015,6 +1015,28 @@
 
   /* ---------------- ADMIN ---------------- */
   var adminDados = null;
+  // faixa vermelha só pro dono quando o servidor detecta problema (ex.: IA sem crédito na Anthropic)
+  var DICA_ALERTA = { ia_sem_credito: "Recarregue em console.anthropic.com → Plans & Billing (e ative a recarga automática).", ia_config: "Confira o secret ANTHROPIC_API_KEY em Supabase → Edge Functions → Secrets." };
+  function mostrarAlertasSistema(lista) {
+    var box = document.getElementById("alertas-sistema");
+    if (!box) {
+      box = document.createElement("div"); box.id = "alertas-sistema"; box.className = "alertas-sistema";
+      var main = document.querySelector("main.content"); main.insertBefore(box, main.firstChild);
+    }
+    if (!lista || !lista.length) { box.hidden = true; box.innerHTML = ""; return; }
+    box.hidden = false;
+    box.innerHTML = lista.map(function (a) {
+      return '<div class="alerta-item"><b>⚠️ ' + escapeHtml(a.mensagem) + '</b>' +
+        '<div class="sub">' + escapeHtml(DICA_ALERTA[a.tipo] || "") + ' Desde ' + fmtDateTime(a.created_at) + ' · ' + a.ocorrencias + ' ocorrência' + (a.ocorrencias === 1 ? "" : "s") + '.</div></div>';
+    }).join("") + '<button type="button" class="btn btn-ghost btn-xs" id="alertas-resolver">Já resolvi — esconder</button>';
+    document.getElementById("alertas-resolver").onclick = function () {
+      callFunction("admin-painel", { acao: "resolver_alertas" }).then(function () { mostrarAlertasSistema([]); toast("Alerta fechado. Se o problema voltar, ele aparece de novo."); })
+        .catch(function (e) { toast(e.message); });
+    };
+  }
+  function verificarAlertasSistema() {
+    callFunction("admin-painel", { acao: "alertas" }).then(function (r) { mostrarAlertasSistema(r.alertas); }).catch(function () {});
+  }
   async function renderAdmin(forcar) {
     var tab = document.getElementById("admin-tabela");
     if (!adminDados || forcar) {
@@ -1023,6 +1045,7 @@
       catch (e) { tab.innerHTML = '<tr><td style="padding:24px;color:#ff9aab;">' + escapeHtml(e.message) + '</td></tr>'; return; }
     }
     var r = adminDados.resumo;
+    mostrarAlertasSistema(adminDados.alertas);
     document.getElementById("admin-resumo").innerHTML = [
       ["Contas", r.contas, r.novas_7_dias + " novas nos últimos 7 dias"],
       ["Assinantes ativos", r.assinantes_ativos, "pagando"],
@@ -2364,6 +2387,7 @@
       document.getElementById("workspace-name").textContent = state.profile.nome ? state.profile.nome + " · Vitrine" : "Vitrine";
 
       document.getElementById("nav-admin").hidden = !ehAdmin();
+      if (ehAdmin()) verificarAlertasSistema();
       carregarEquipe().then(aceitarConvitePendente);
       if (!navWired) { wireNav(); navWired = true; }
       updateNavPlanBadge();

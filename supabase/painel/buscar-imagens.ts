@@ -89,7 +89,7 @@ async function termosDeBusca(contexto: string, slides: Slide[]): Promise<string[
       method: "POST",
       headers: { "x-api-key": ANTHROPIC, "anthropic-version": "2023-06-01", "content-type": "application/json" },
       body: JSON.stringify({
-        model: "claude-sonnet-4-5",
+        model: "claude-haiku-4-5",   // escolher palavras de busca é tarefa simples: Haiku custa ~3x menos
         max_tokens: 400,
         messages: [{
           role: "user",

@@ -669,7 +669,7 @@
           '<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;">' +
           (modo === "publicar"
             ? '<button class="btn btn-ghost btn-sm" id="pv-back">Voltar e ajustar</button><button class="btn btn-primary btn-sm" id="pv-ok"' + (carregando || aviso ? " disabled" : "") + '>' + ICONS.ig + ' Publicar no ' + F.nome + '</button>'
-            : '<button class="btn btn-ghost btn-sm" id="pv-back">Fechar</button>' + (formato === "feed" && !carregando && blobs.length && !c._temp ? '<button class="btn btn-primary btn-sm" id="pv-musica">🎵 Postar com música</button>' : '')) + '</div>';
+            : '<button class="btn btn-ghost btn-sm" id="pv-back">Fechar</button>' + (formato === "feed" && !carregando && blobs.length && !c._temp ? '<button class="btn btn-primary btn-sm" id="pv-musica">📲 Postar no Instagram</button>' : '')) + '</div>';
         document.getElementById("pv-close").onclick = function () { done(null); };
         document.getElementById("pv-back").onclick = function () { done(null); };
         var ok = document.getElementById("pv-ok"); if (ok) ok.onclick = function () { done({ formato: formato, blobs: cache[formato] }); };
@@ -731,8 +731,8 @@
     function draw(carregando, msg) {
       var celular = !carregando && podeCompartilhar();
       body.innerHTML =
-        '<div class="modal-head"><div><h3 style="font-size:18px;">🎵 Postar com música</h3>' +
-        '<p style="margin:4px 0 0;font-size:12.5px;color:var(--ink-muted);">A música é escolhida no próprio app do Instagram.</p></div>' +
+        '<div class="modal-head"><div><h3 style="font-size:18px;">📲 Postar no Instagram</h3>' +
+        '<p style="margin:4px 0 0;font-size:12.5px;color:var(--ink-muted);">Abre o app do Instagram com o carrossel pronto — lá você pode colocar música e publicar.</p></div>' +
         '<button class="modal-close" id="mu-close">' + ICONS.close + '</button></div>' +
         (carregando
           ? '<div class="igpv-load" style="position:static;padding:30px 0;"><div class="spin"></div><span id="mu-load">' + (msg || "Gerando imagens…") + '</span></div>'
@@ -1759,7 +1759,7 @@
       { id: "rascunho", nome: "Salvar rascunho", desc: "Continue editando depois" },
       { id: "agendado", nome: "Agendar", desc: "Escolha data e horário" },
       { id: "publicado", nome: "Publicar agora", desc: (state.igConta && state.igConta.status === "ativo") ? "Envia direto pro Instagram" : "Marca como publicado" },
-      { id: "musica", nome: "🎵 Postar com música", desc: "Abre o app do Instagram pra você escolher a música" }
+      { id: "musica", nome: "📲 Postar no Instagram", desc: "Abre o app do Instagram com tudo pronto — dá pra pôr música" }
     ];
     document.getElementById("dest-grid").innerHTML = dests.map(function (d) {
       return '<div class="dest-card ' + (wizard.dest === d.id ? "selected" : "") + '" data-dest="' + d.id + '"><h4>' + d.nome + '</h4><p>' + d.desc + '</p></div>';

@@ -412,7 +412,7 @@
     var artHtml = foto ? '<div class="tile-bg">' + imgWithFallback(foto, "") + '</div>' : "";
     return '<div class="slide-tile fnt-' + fonteDe(fonte) + ' ' + (mini ? "mini " : "") + (foto ? "has-bg " : "") + 'tpl-' + (tplSlug || "minimalista") + '">' + artHtml +
       '<div class="stag">' + escapeHtml(slide.tag || "") + '</div>' +
-      '<div class="stitle">' + escapeHtml(slide.titulo) + '</div>' +
+      '<div class="stitle">' + tituloHtml(slide.titulo) + '</div>' +
       '<div class="sbody">' + escapeHtml(slide.corpo) + '</div>' +
       (mini ? "" : '<div class="sindex">' + index + "/" + total + "</div>") +
       "</div>";
@@ -442,6 +442,19 @@
       img.onerror = function () { clearTimeout(t); resolve(null); };
       img.src = url;
     });
+  }
+
+  /* ---------- destaque de palavras: a IA marca *palavra* no título e ela sai em amarelo ---------- */
+  var COR_DESTAQUE = "#FFD60A";
+  function semMarcas(t) { return String(t || "").replace(/\*/g, ""); }
+  function normPalavra(w) { return String(w || "").toLowerCase().replace(/[^\p{L}\p{N}%$]/gu, ""); }
+  function palavrasDestaque(t) {
+    var set = {}, m, re = /\*([^*]+)\*/g;
+    while ((m = re.exec(String(t || "")))) m[1].split(/\s+/).forEach(function (w) { var n = normPalavra(w); if (n) set[n] = 1; });
+    return set;
+  }
+  function tituloHtml(t) {
+    return escapeHtml(String(t || "")).replace(/\*([^*]+)\*/g, '<span class="hl">$1</span>').replace(/\*/g, "");
   }
 
   function wrapLines(ctx, text, maxW) {
@@ -502,17 +515,35 @@
     }
     var bottomLimit = SLIDE_H - (alto ? 340 : pad) - 60;   // reserva espaço do contador (e da UI do stories/reels)
     var avail = bottomLimit - top;
-    var title = fitText(ctx, slide.titulo, { size: i === 0 ? 96 : 80, min: 44, weight: tPeso, family: display, maxW: SLIDE_W - pad * 2, maxH: avail * 0.55, lh: 1.08 });
-    ctx.fillStyle = ink; ctx.font = tPeso + " " + title.size + "px " + display;
-    title.lines.forEach(function (l, k) { ctx.fillText(l, pad, top + k * title.size * 1.08); });
+    var title = fitText(ctx, semMarcas(slide.titulo), { size: i === 0 ? 108 : 84, min: 44, weight: tPeso, family: display, maxW: SLIDE_W - pad * 2, maxH: avail * 0.58, lh: 1.08 });
+    ctx.font = tPeso + " " + title.size + "px " + display;
+    var hl = palavrasDestaque(slide.titulo), espaco = ctx.measureText(" ").width;
+    // sombra leve: o título "salta" da foto, como nos carrosséis que viralizam
+    ctx.shadowColor = "rgba(0,0,0,0.45)"; ctx.shadowBlur = bgImg ? 18 : 0;
+    title.lines.forEach(function (l, k) {
+      var x = pad, y = top + k * title.size * 1.08;
+      l.split(" ").forEach(function (w) {
+        ctx.fillStyle = hl[normPalavra(w)] ? COR_DESTAQUE : ink;
+        ctx.fillText(w, x, y);
+        x += ctx.measureText(w).width + espaco;
+      });
+    });
+    ctx.shadowBlur = 0; ctx.shadowColor = "transparent";
 
     var bodyMaxH = avail - title.height - 48;
     var body = fitText(ctx, slide.corpo, { size: 44, min: 26, weight: 500, family: family, maxW: SLIDE_W - pad * 2, maxH: bodyMaxH, lh: 1.38 });
     ctx.globalAlpha = 0.92; ctx.font = "500 " + body.size + "px " + family;
     var by = bottomLimit - body.height;           // corpo alinhado embaixo, como no preview
     body.lines.forEach(function (l, k) { ctx.fillText(l, pad, by + k * body.size * 1.38); });
-    ctx.globalAlpha = 0.7; ctx.font = "500 30px \"JetBrains Mono\", monospace"; ctx.textAlign = "right";
-    ctx.fillText((i + 1) + "/" + total, SLIDE_W - pad, bottomLimit + 30);
+    ctx.textAlign = "right";
+    if (i === 0 && total > 1) {
+      // capa: chamada visual pra arrastar (aumenta o "swipe rate", sinal forte pro algoritmo)
+      ctx.globalAlpha = 1; ctx.fillStyle = COR_DESTAQUE; ctx.font = "800 34px " + family;
+      ctx.fillText("ARRASTA  →", SLIDE_W - pad, bottomLimit + 26);
+    } else {
+      ctx.globalAlpha = 0.7; ctx.font = "500 30px \"JetBrains Mono\", monospace";
+      ctx.fillText((i + 1) + "/" + total, SLIDE_W - pad, bottomLimit + 30);
+    }
     ctx.globalAlpha = 1; ctx.textAlign = "left";
 
     // teste grátis: faixa com o link da plataforma embaixo de cada página do carrossel
@@ -589,8 +620,16 @@
     }
   }
 
+  var HASHTAGS = "#mercadoimobiliario #imoveis #corretordeimoveis #fortaleza #dicasimobiliarias";
   function legendaPadrao(c) {
-    var leg = c.legenda || c.slides.map(function (s) { return s.titulo; }).join(" · ");
+    var sl = c.slides || [];
+    var leg = c.legenda;
+    if (!leg) {
+      // legenda pensada pra viralizar: gancho da capa + CTA do último slide + pedido de salvar/compartilhar + hashtags
+      var capa = sl[0] ? semMarcas(sl[0].titulo) : "";
+      var cta = sl.length > 1 ? semMarcas(sl[sl.length - 1].corpo || sl[sl.length - 1].titulo) : "";
+      leg = [capa ? capa + " 👇" : "", cta, "📌 Salva pra não perder e manda pra quem precisa ver isso.", HASHTAGS].filter(Boolean).join("\n\n");
+    }
     return emTeste() ? leg + "\n\n✨ Criado com a Vitrine — " + LINK_VITRINE : leg;
   }
 
@@ -1391,7 +1430,7 @@
      WIZARD
   ============================================================ */
   function freshWizard() {
-    return { step: 1, subjectMode: "topic", propertyId: null, topicId: null, customTopic: "", customCategoria: "Dicas", slides: null, templateSlug: "minimalista", fonte: "moderna", dest: "rascunho", customPrompt: "" };
+    return { step: 1, subjectMode: "topic", propertyId: null, topicId: null, customTopic: "", customCategoria: "Dicas", slides: null, templateSlug: "minimalista", fonte: "impacto", dest: "rascunho", customPrompt: "" };
   }
   var wizard = freshWizard();
   function resetWizard() {
@@ -1642,7 +1681,7 @@
       document.getElementById("gen-btn").addEventListener("click", runGeneration);
       return;
     }
-    area.innerHTML = subjectSpotlightHtml() + promptBoxHtml() + '<div class="slide-editor" id="slide-editor"></div>' +
+    area.innerHTML = subjectSpotlightHtml() + promptBoxHtml() + '<p class="dica-destaque">Dica: palavras entre *asteriscos* no título saem em <span class="hl">amarelo</span> no carrossel.</p><div class="slide-editor" id="slide-editor"></div>' +
       '<button class="btn btn-ghost btn-sm" id="regen-btn">' + ICONS.wand + ' Gerar novamente com esse direcionamento</button>';
     wirePromptBox();
     var editor = document.getElementById("slide-editor");

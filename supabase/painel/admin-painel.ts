@@ -1,5 +1,5 @@
 // admin-painel — lista as contas da Vitrine para o DONO da plataforma.
-// POST (logado) {} → { resumo, contas: [...] }
+// POST (logado) {} → { resumo, alertas, contas: [...] } · { acao: "alertas" } → { alertas } · { acao: "resolver_alertas" }
 // Segurança: valida o login (JWT) e só responde se o usuário estiver em ADMIN_IDS. Qualquer outro recebe 403.
 // Os dados vêm com service role (ignora RLS), por isso a checagem de admin aqui no servidor é obrigatória.
 // Configuração no painel: "Verify JWT with legacy secret" DESLIGADO (o login é validado no código, como nas outras funções).
@@ -28,6 +28,16 @@ Deno.serve(async (req) => {
     const { data: u, error } = await db.auth.getUser(token);
     if (error || !u?.user) return json({ error: "Não autenticado." }, 401);
     if (!ADMIN_IDS.includes(u.user.id)) return json({ error: "Acesso restrito." }, 403);
+
+    // alertas do sistema (ex.: IA sem crédito) — faixa vermelha no app do dono
+    const body = await req.json().catch(() => ({}));
+    const alertasAbertos = async () =>
+      (await db.from("alertas_sistema").select("id, tipo, mensagem, origem, ocorrencias, created_at, ultima_em").is("resolvido_em", null).order("created_at")).data ?? [];
+    if (body?.acao === "alertas") return json({ alertas: await alertasAbertos() });
+    if (body?.acao === "resolver_alertas") {
+      await db.from("alertas_sistema").update({ resolvido_em: new Date().toISOString() }).is("resolvido_em", null);
+      return json({ ok: true });
+    }
 
     // contas (Auth) — até 1000 por página
     const users: { id: string; email?: string; created_at: string; last_sign_in_at?: string; email_confirmed_at?: string }[] = [];
@@ -100,6 +110,7 @@ Deno.serve(async (req) => {
         receita_mensal_estimada: Math.round(receitaMensal * 100) / 100,
         carrosseis: (cars ?? []).length,
       },
+      alertas: await alertasAbertos(),
       contas,
     });
   } catch (e) {

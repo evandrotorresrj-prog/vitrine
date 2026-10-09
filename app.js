@@ -784,44 +784,6 @@
     await abrirPrevia(c, "ver");
   }
 
-  async function publishToInstagram(c, btn) {
-    if (!(state.igConta && state.igConta.status === "ativo")) { toast("Conecte o Instagram primeiro (aba Instagram)."); return false; }
-    if (testeSemPublicacoes()) { avisoFimDoTeste(); return false; }
-    if (!c.slides || !c.slides.length) { toast("Este carrossel não tem slides."); return false; }
-    var orig = btn ? btn.innerHTML : "";
-    function label(t) { if (btn) btn.innerHTML = '<div class="spin"></div> ' + t; }
-    try {
-      var escolha = await abrirPrevia(c, "publicar");    // sempre mostra como ficou e pergunta Feed / Reels / Stories
-      if (!escolha) { toast("Publicação cancelada — nada foi enviado ao Instagram."); return false; }
-      if (btn) btn.disabled = true;
-      var pasta = state.profile.id + "/" + c.id + "/" + Date.now() + "-" + escolha.formato;
-      var payload = { carrossel_id: c.id, legenda: legendaPadrao(c), formato: escolha.formato };
-      if (escolha.formato === "reels") {
-        var video = await gerarVideoReels(escolha.blobs, function (pct) { label("Gerando vídeo " + pct + "%…"); });
-        label("Enviando vídeo…");
-        payload.video_url = await uploadArquivo(video, pasta + "/reels.mp4", "video/mp4");
-      } else {
-        payload.urls = [];
-        for (var i = 0; i < escolha.blobs.length; i++) {
-          label("Enviando imagem " + (i + 1) + "/" + escolha.blobs.length + "…");
-          payload.urls.push(await uploadSlide(escolha.blobs[i].blob, pasta + "/" + (i + 1) + ".jpg"));
-        }
-        if (escolha.formato === "feed") {
-          for (var k = 0; k < c.slides.length; k++) { c.slides[k].render_url = payload.urls[k]; try { await DB.update("slides", "id=eq." + c.slides[k].id, { render_url: payload.urls[k] }); } catch (e) { } }
-        }
-      }
-      label(escolha.formato === "reels" ? "Publicando Reels (o Instagram processa o vídeo)…" : "Publicando no " + FORMATOS[escolha.formato].nome + "…");
-      var resp = await callFunction("instagram-publicar", payload);
-      c.status = "publicado"; c.data_publicada = resp.data_publicada; c.instagram_permalink = resp.permalink;
-      toast("Publicado no " + FORMATOS[escolha.formato].nome + " do Instagram!");
-      return true;
-    } catch (err) {
-      toast("Erro ao publicar: " + err.message);
-      return false;
-    } finally {
-      if (btn) { btn.disabled = false; btn.innerHTML = orig; }
-    }
-  }
 
   /* ============================================================
      AUTH UI
@@ -1186,13 +1148,12 @@
     var meta = getSubjectMeta(c);
     var tpl = findTemplateById(c.template_id);
     var pillCls = c.status === "publicado" ? "pill-publicado" : c.status === "agendado" ? "pill-agendado" : "pill-draft";
-    var igOk = state.igConta && state.igConta.status === "ativo";
     var extra = c.status === "publicado"
       ? (igLink(c.instagram_permalink) ? '<a class="btn btn-ghost btn-sm" href="' + escapeHtml(igLink(c.instagram_permalink)) + '" target="_blank" rel="noopener noreferrer">' + ICONS.ig + ' Ver no Instagram</a>' : "")
       : '<div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end;">' +
         '<button class="btn btn-ghost btn-sm" id="preview-ig">' + ICONS.eye + ' Ver como fica</button>' +
         (c.status === "agendado" ? '<button class="btn btn-ghost btn-sm" id="mark-published">' + ICONS.check + ' Marcar como publicado</button>' : "") +
-        '<button class="btn btn-primary btn-sm" id="publish-ig"' + (igOk ? "" : ' title="Conecte o Instagram na aba Instagram"') + '>' + ICONS.ig + ' Publicar no Instagram</button></div>';
+        '<button class="btn btn-primary btn-sm" id="publish-ig">📲 Postar no Instagram</button></div>';
     document.getElementById("modal-body").innerHTML =
       '<div class="modal-head"><div><h3 style="font-size:19px;">' + escapeHtml(meta.titulo) + '</h3>' +
       '<span class="pill ' + pillCls + '" style="margin-top:6px;">' + escapeHtml(c.status) + '</span></div>' +
@@ -1223,10 +1184,7 @@
     var pv = document.getElementById("preview-ig");
     if (pv) pv.addEventListener("click", async function () { await previewCarousel(c); openCarouselModal(c.id); });
     var pi = document.getElementById("publish-ig");
-    if (pi) pi.addEventListener("click", async function () {
-      if (await publishToInstagram(c, pi)) { closeModal(); renderPainel(); renderInstagram(); }
-      else if (document.getElementById("overlay").hidden) openCarouselModal(c.id);
-    });
+    if (pi) pi.addEventListener("click", function () { postarComMusica(c); });
     var mp = document.getElementById("mark-published");
     if (mp) mp.addEventListener("click", async function () {
       try {
@@ -1758,7 +1716,6 @@
     var dests = [
       { id: "rascunho", nome: "Salvar rascunho", desc: "Continue editando depois" },
       { id: "agendado", nome: "Agendar", desc: "Escolha data e horário" },
-      { id: "publicado", nome: "Publicar agora", desc: (state.igConta && state.igConta.status === "ativo") ? "Envia direto pro Instagram" : "Marca como publicado" },
       { id: "musica", nome: "📲 Postar no Instagram", desc: "Abre o app do Instagram com tudo pronto — dá pra pôr música" }
     ];
     document.getElementById("dest-grid").innerHTML = dests.map(function (d) {
@@ -1777,7 +1734,7 @@
     document.getElementById("schedule-box").hidden = wizard.dest !== "agendado";
     if (wizard.dest === "agendado") renderCalendario();
     var igOn = state.igConta && state.igConta.status === "ativo";
-    document.getElementById("ig-warn").hidden = !(wizard.dest === "publicado" && !igOn);
+    document.getElementById("ig-warn").hidden = !(wizard.dest === "agendado" && !igOn);
   }
 
   /* ---------- calendário de agendamento (dia + hora) ---------- */
@@ -1889,13 +1846,7 @@
       payload.data_agendada = new Date(date + "T" + time).toISOString();
       if (wizard.slides.length < 2 || wizard.slides.length > 10) { toast("Pra publicar no feed o carrossel precisa ter de 2 a 10 slides."); return; }
       if (testeSemPublicacoes()) { avisoFimDoTeste(); return; }
-    } else if (wizard.dest === "publicado") {
-      payload.data_publicada = new Date().toISOString();
     }
-    // com Instagram conectado, "Publicar agora" salva como rascunho e publica de verdade;
-    // o servidor só marca "publicado" depois que o Instagram confirmar o post.
-    var igPublish = wizard.dest === "publicado" && state.igConta && state.igConta.status === "ativo";
-    if (igPublish) { payload.status = "rascunho"; delete payload.data_publicada; }
     // "com música": a API do Instagram não coloca música, então salva como rascunho e abre o app do Instagram
     var comMusica = wizard.dest === "musica";
     if (comMusica) {
@@ -1939,11 +1890,6 @@
         postarComMusica(carrossel);
         return;
       }
-      if (igPublish) {
-        var ok = await publishToInstagram(carrossel, btn);
-        if (!ok) toast("Carrossel salvo como rascunho — tente publicar de novo pelo painel.");
-        resetWizard(); showScreen("painel"); return;
-      }
       if (wizard.dest === "agendado") {
         // gera e sobe agora as imagens do feed: na hora marcada o servidor publica sozinho, mesmo com o app fechado
         try {
@@ -1954,7 +1900,6 @@
       }
       if (wizard.dest === "rascunho") toast("Rascunho salvo.");
       else if (wizard.dest === "agendado") toast("Agendado para " + fmtDateTime(payload.data_agendada) + (state.igConta && state.igConta.status === "ativo" ? " — vai ser publicado sozinho no Instagram." : ". Conecte o Instagram (aba Instagram) até lá pra publicar sozinho."));
-      else toast("Marcado como publicado (conecte o Instagram para envio automático).");
 
       resetWizard(); showScreen("painel");
     } catch (err) {
@@ -2029,10 +1974,10 @@
       ('<div class="l"><div class="ig-icon">' + ICONS.ig + '</div><div><div style="font-weight:700;">@' + escapeHtml(state.igConta.username) + '</div>' +
         '<div style="font-size:12px;color:var(--status-pub-fg);font-weight:600;">Conectado' + (state.igConta.token_expires_at ? ' · acesso válido até ' + fmtDate(state.igConta.token_expires_at) : '') + '</div></div></div>' +
         '<button class="btn btn-ghost btn-sm" id="ig-toggle">Desconectar</button>') +
-        (emTeste() ? '<div style="flex-basis:100%;font-size:12.5px;color:var(--ink-muted);margin-top:10px;">Teste grátis: você pode publicar até ' + limitePublicacoesTeste() + ' carrosséis (' + Math.max(limitePublicacoesTeste() - publicadosNoInstagram(), 0) + ' restante' + (limitePublicacoesTeste() - publicadosNoInstagram() === 1 ? "" : "s") + '). As imagens e a legenda levam o link da Vitrine.</div>' : "")
+        (emTeste() ? '<div style="flex-basis:100%;font-size:12.5px;color:var(--ink-muted);margin-top:10px;">Teste grátis: você pode agendar até ' + limitePublicacoesTeste() + ' carrosséis (' + Math.max(limitePublicacoesTeste() - publicadosNoInstagram(), 0) + ' restante' + (limitePublicacoesTeste() - publicadosNoInstagram() === 1 ? "" : "s") + '). As imagens e a legenda levam o link da Vitrine.</div>' : "")
       :
       ('<div class="l"><div class="ig-icon">' + ICONS.ig + '</div><div><div style="font-weight:700;">Nenhuma conta conectada</div>' +
-        '<div style="font-size:12px;color:var(--ink-muted);">Conecte sua conta Profissional do Instagram para publicar os carrosséis direto pela Vitrine</div></div></div>' +
+        '<div style="font-size:12px;color:var(--ink-muted);">Conecte sua conta Profissional do Instagram para os posts agendados saírem sozinhos na hora marcada</div></div></div>' +
         '<button class="btn btn-primary btn-sm" id="ig-toggle">Conectar Instagram</button>');
     document.getElementById("ig-toggle").addEventListener("click", async function () {
       try {

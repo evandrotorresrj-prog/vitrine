@@ -98,7 +98,10 @@ Contexto: ${contexto || "mercado imobiliário"}
 Slides:
 ${lista}
 
-Para cada slide, escreva UMA busca curta (2 a 5 palavras) que traga uma foto real, bonita e relacionada ao assunto do slide.
+Para cada slide, escreva UMA busca curta (2 a 5 palavras) que traga uma foto real, relacionada ao assunto do slide e com IMPACTO VISUAL de post viral:
+luz dramática ou golden hour, alto contraste, cores vivas, enquadramentos marcantes (vista aérea, drone, grande angular, detalhe de perto),
+imóveis de alto padrão, varandas com vista, piscinas, skyline, chaves e contratos em close. Nada de foto genérica de banco de imagem com cara de propaganda.
+Na CAPA (slide 1), escolha a imagem mais chamativa de todas — ela precisa parar o scroll.
 O corretor atua em FORTALEZA, CEARÁ. Diversifique: em cerca de METADE dos slides (alternando, nunca dois seguidos iguais), use fotos reais de Fortaleza,
 sempre com a palavra "Fortaleza" na busca e variando o lugar — ex.: "Fortaleza Beira Mar", "Fortaleza skyline", "Praia de Iracema Fortaleza",
 "Meireles Fortaleza", "Fortaleza Ceara buildings", "Ponte dos Ingleses Fortaleza", "Praia do Futuro Fortaleza", "Dragao do Mar Fortaleza", "Fortaleza sunset beach".
